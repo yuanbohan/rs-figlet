@@ -1,0 +1,15 @@
+[package]
+name = "figlet-rs"
+version = "0.1.0"
+authors = ["hanyuanbo <yuanbo.han@gmail.com>"]
+license = "Apache-2.0"
+edition = "2018"
+readme = "README.md"
+repository = "https://github.com/yuanbohan/rs-figlet"
+description = """
+Rust implementation of [FIGlet](http://www.figlet.org/) to create ascii art
+"""
+keywords = ["figlet", "ascii"]
+categories = ["no-std"]
+
+[dependencies]
