@@ -5,6 +5,8 @@
 //! ```
 //! ```
 
+pub mod figlet;
+
 #[cfg(test)]
 mod tests {
 
