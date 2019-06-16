@@ -1,131 +1,181 @@
-use std::collections::HashMap;
+//! please visit [figfont](http://www.jave.de/figlet/figfont.html) to find detail.
 
-/// http://www.jave.de/figlet/figfont.html
-pub struct FIGfont<'a> {
-    pub header_line: HeaderLine<'a>,
+use std::collections::HashMap;
+use std::fs;
+use std::process;
+
+pub struct FIGfont {
+    pub header_line: HeaderLine,
     pub comments: String,
-    pub data: HashMap<i32, FIGcharacter>,
+    pub data: HashMap<u32, FIGcharacter>,
 }
 
-// impl FIGfont {
-//     pub fn new() -> Result<FIGfont, &'static str> {
-//         Err("")
-//     }
+impl FIGfont {
+    fn read_font_file(filename: &str) -> String {
+        let contents = match fs::read_to_string(filename) {
+            Ok(contents) => contents,
+            Err(err) => panic!("err to read font content: {}", err),
+        };
 
-//     pub fn convert(&self, message: &str) -> Result<FIGure, &'static str> {
-//         Err("")
-//     }
-// }
+        contents
+    }
+
+    fn read_header_line(lines: &Vec<&str>) -> HeaderLine {
+        let headerline = lines.get(0).unwrap_or_else(|| {
+            panic!("can't read headerline from fontfile");
+        });
+
+        HeaderLine::new(headerline)
+    }
+
+    fn read_comments(lines: &Vec<&str>, comment_count: i32) -> String {
+        let length = lines.len() as i32;
+        if length < comment_count + 1 {
+            panic!("can't get comments from font");
+        };
+
+        lines[1..(1 + comment_count) as usize]
+            .join("\n")
+            .to_string()
+    }
+
+    fn read_data(lines: &Vec<&str>, headerline: &HeaderLine) -> HashMap<u32, FIGcharacter> {
+        let mut map = HashMap::new();
+        let character = FIGcharacter {
+            code: 1,
+            characters: vec![String::from("1")],
+            width: 1,
+        };
+        map.insert(1, character);
+
+        map
+    }
+}
+
+impl FIGfont {
+    pub fn from_content(contents: &str) -> FIGfont {
+        let lines: Vec<&str> = contents.lines().collect();
+
+        let header_line = FIGfont::read_header_line(&lines);
+        let comments = FIGfont::read_comments(&lines, header_line.comment_lines);
+        let data = FIGfont::read_data(&lines, &header_line);
+
+        FIGfont {
+            header_line,
+            comments,
+            data,
+        }
+    }
+
+    pub fn from_file(fontname: &str) -> FIGfont {
+        let contents = FIGfont::read_font_file(fontname);
+        FIGfont::from_content(&contents)
+    }
+
+    pub fn convert(&self, _message: &str) -> Result<FIGure, &'static str> {
+        Err("")
+    }
+}
 
 #[derive(Debug)]
-pub struct HeaderLine<'a> {
-    pub header_line: &'a str,
+pub struct HeaderLine {
+    pub header_line: String,
 
-    pub signature: &'a str,
-    pub hardblank: &'a str,
-    pub height: u32,
-    pub baseline: u32,
-    pub max_length: u32,
-    pub old_layout: i8, // Legal values -1 to 63
-    pub comment_lines: u32,
-    pub print_direction: Option<u8>,
-    pub full_layout: Option<u16>, // Legal values 0 to 32767
-    pub codetag_count: Option<u32>,
+    // required
+    pub signature: String,
+    pub hardblank: String,
+    pub height: i32,
+    pub baseline: i32,
+    pub max_length: i32,
+    pub old_layout: i32, // Legal values -1 to 63
+    pub comment_lines: i32,
+
+    // optional
+    pub print_direction: Option<i32>,
+    pub full_layout: Option<i32>, // Legal values 0 to 32767
+    pub codetag_count: Option<i32>,
 }
 
-impl<'a> HeaderLine<'a> {
-    pub fn new(header_line: &str) -> Result<HeaderLine, &str> {
-        let infos: Vec<&str> = header_line.trim().split(" ").collect();
-        let mut iter = infos.iter();
+impl HeaderLine {
+    fn extract_signature_with_hardblank(infos: &Vec<&str>) -> (String, String) {
+        let signature_with_hardblank = infos.get(0).unwrap_or_else(|| {
+            panic!("can't get signature with hardblank from first line of font");
+        });
 
-        // 1st: signature with hardblank
-        let signature_with_hardblank = iter
-            .next()
-            .expect("headerline: signature_with_hardblank not found!");
         if signature_with_hardblank.len() < 6 {
-            return Err("signature_with_hardblank length is illegal, at least 6.");
+            panic!("can't get signature with hardblank from first line of font");
         }
         let hardblank_index = &signature_with_hardblank.len() - 1;
         let signature = &signature_with_hardblank[..hardblank_index];
         let hardblank = &signature_with_hardblank[hardblank_index..];
 
-        // 2nd: height
-        let height: u32 = iter
-            .next()
-            .expect("headerline: height not found!")
-            .parse()
-            .expect("headerline: height is illegal!");
-        // 3rd: baseline
-        let baseline: u32 = iter
-            .next()
-            .expect("headerline: baseline not found!")
-            .parse()
-            .expect("headerline: baseline is illegal!");
-        // 4th: max length
-        let max_length: u32 = iter
-            .next()
-            .expect("headerline: max length not found!")
-            .parse()
-            .expect("headerline: max length is illegal!");
-        // 5th: old layout
-        let old_layout: i8 = iter
-            .next()
-            .expect("headerline: old layout not found!")
-            .parse()
-            .expect("headerline: old layout is illegal!");
-        // 6th: comment lines
-        let comment_lines: u32 = iter
-            .next()
-            .expect("headerline: comment lines not found!")
-            .parse()
-            .expect("headerline: comment lines is illegal!");
+        (String::from(signature), String::from(hardblank))
+    }
 
-        let mut headerline = HeaderLine {
-            header_line,
-            signature,
-            hardblank,
+    fn extract_required_info(infos: &Vec<&str>, index: usize, field: &str) -> i32 {
+        let val = infos.get(index).unwrap_or_else(|| {
+            panic!(
+                "can't get field:{} index:{} from first line of font",
+                field, index
+            )
+        });
+
+        let num: i32 = match val.parse() {
+            Ok(num) => num,
+            Err(_) => panic!("can't parse required field:{} of {} to i32", field, val),
+        };
+
+        num
+    }
+
+    fn extract_optional_info(infos: &Vec<&str>, index: usize, field: &str) -> Option<i32> {
+        if let Some(val) = infos.get(index) {
+            let num: i32 = match val.parse() {
+                Ok(num) => num,
+                Err(_) => panic!("can't parse optional field:{} of {} to i32", field, val),
+            };
+            return Some(num);
+        }
+
+        None
+    }
+
+    pub fn new(header_line: &str) -> HeaderLine {
+        let infos: Vec<&str> = header_line.trim().split(" ").collect();
+
+        let (signature, hardblank) = HeaderLine::extract_signature_with_hardblank(&infos);
+
+        let height = HeaderLine::extract_required_info(&infos, 1, "height");
+        let baseline = HeaderLine::extract_required_info(&infos, 2, "baseline");
+        let max_length = HeaderLine::extract_required_info(&infos, 3, "max length");
+        let old_layout = HeaderLine::extract_required_info(&infos, 4, "old layout");
+        let comment_lines = HeaderLine::extract_required_info(&infos, 5, "comment lines");
+
+        let print_direction = HeaderLine::extract_optional_info(&infos, 6, "print direction");
+        let full_layout = HeaderLine::extract_optional_info(&infos, 7, "full layout");
+        let codetag_count = HeaderLine::extract_optional_info(&infos, 8, "codetag count");
+
+        HeaderLine {
+            header_line: String::from(header_line),
+            signature: String::from(signature),
+            hardblank: String::from(hardblank),
             height,
             baseline,
             max_length,
             old_layout,
             comment_lines,
-            print_direction: None,
-            full_layout: None,
-            codetag_count: None,
-        };
-
-        // 7th: print direction
-        if let Some(&print_direction) = iter.next() {
-            let direction: u8 = print_direction
-                .parse()
-                .expect("headerline: print direction is illegal!");
-            headerline.print_direction = Some(direction);
+            print_direction,
+            full_layout,
+            codetag_count,
         }
-
-        // 8th: full layout
-        if let Some(&full_layout) = iter.next() {
-            let full_layout: u16 = full_layout
-                .parse()
-                .expect("headerline: full layout is illegal!");
-            headerline.full_layout = Some(full_layout);
-        }
-
-        // 9th: codetag count
-        if let Some(&codetag_count) = iter.next() {
-            let codetag_count: u32 = codetag_count
-                .parse()
-                .expect("headerline: codetag count is illegal!");
-            headerline.codetag_count = Some(codetag_count);
-        }
-
-        Ok(headerline)
     }
 }
 
+#[derive(Debug)]
 pub struct FIGcharacter {
     pub code: i32,
     pub characters: Vec<String>,
-    pub width: u32,
+    pub width: i32,
 }
 
 impl FIGcharacter {}
@@ -144,7 +194,8 @@ mod tests {
     #[test]
     fn new_header_line() {
         let line = "flf2a$ 6 5 20 15 3 0 143 229";
-        let headerline = HeaderLine::new(line).unwrap();
+        let headerline = HeaderLine::new(line);
+        assert_eq!(line, headerline.header_line);
         assert_eq!("flf2a", headerline.signature);
         assert_eq!("$", headerline.hardblank);
         assert_eq!(6, headerline.height);
@@ -155,5 +206,13 @@ mod tests {
         assert_eq!(Some(0), headerline.print_direction);
         assert_eq!(Some(143), headerline.full_layout);
         assert_eq!(Some(229), headerline.codetag_count);
+    }
+
+    #[test]
+    fn new_fig_font() {
+        let font = FIGfont::from_file("resources/standard.flf");
+        println!("header_line: {:?}", font.header_line);
+        println!("comments: {}", font.comments);
+        println!("one data: {:?}", font.data.get(&1));
     }
 }
