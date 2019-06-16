@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::process;
+use std::i32;
 
 pub struct FIGfont {
     pub header_line: HeaderLine,
     pub comments: String,
-    pub data: HashMap<u32, FIGcharacter>,
+    pub fonts: HashMap<i32, FIGcharacter>,
 }
 
 impl FIGfont {
@@ -39,15 +39,147 @@ impl FIGfont {
             .to_string()
     }
 
-    fn read_data(lines: &Vec<&str>, headerline: &HeaderLine) -> HashMap<u32, FIGcharacter> {
-        let mut map = HashMap::new();
-        let character = FIGcharacter {
-            code: 1,
-            characters: vec![String::from("1")],
-            width: 1,
-        };
-        map.insert(1, character);
+    fn extract_one_line(
+        lines: &Vec<&str>,
+        index: usize,
+        height: usize,
+        is_last_index: bool,
+    ) -> String {
+        let line = lines.get(index).unwrap_or_else(|| {
+            panic!("can't get line at specified index:{}", index);
+        });
 
+        if line.len() <= 2 {
+            panic!("one line len can't be less than 2. it is:{}", line);
+        }
+
+        let mut width = line.len() - 1;
+        if is_last_index && height != 1 {
+            width -= 1;
+        }
+
+        String::from(&line[..width])
+    }
+
+    fn extract_one_font(
+        lines: &Vec<&str>,
+        code: i32,
+        start_index: usize,
+        height: usize,
+    ) -> FIGcharacter {
+        let mut characters = vec![];
+        for i in 0..height {
+            let index = start_index + i as usize;
+            let is_last_index = i == height - 1;
+            let one_line_character = FIGfont::extract_one_line(lines, index, height, is_last_index);
+            characters.push(one_line_character);
+        }
+        let width = characters[0].len() as i32;
+
+        FIGcharacter {
+            code,
+            characters,
+            width,
+        }
+    }
+
+    // 32-126, 196, 214, 220, 228, 246, 252, 223
+    fn read_required_font(
+        lines: &Vec<&str>,
+        headerline: &HeaderLine,
+        map: &mut HashMap<i32, FIGcharacter>,
+    ) {
+        let offset = (1 + headerline.comment_lines) as usize;
+        let height = headerline.height as usize;
+        let size = lines.len();
+
+        for i in 0..=94 {
+            let code = (i + 32) as i32;
+            let start_index = offset + i * height;
+            if start_index >= size {
+                break;
+            }
+
+            let font = FIGfont::extract_one_font(lines, code, start_index, height);
+            map.insert(code, font);
+        }
+
+        let offset = offset + 95 * height;
+        let required_deutsch_characters_codes: [i32; 7] = [196, 214, 220, 228, 246, 252, 223];
+        for i in 0..=6 {
+            let code = required_deutsch_characters_codes[i];
+            // let start_index = (offset + (95 + i) * height) as usize;
+            let start_index = offset + i * height;
+            if start_index >= size {
+                break;
+            }
+
+            let font = FIGfont::extract_one_font(lines, code, start_index, height);
+            map.insert(code, font);
+        }
+    }
+
+    fn extract_codetag_font_code(lines: &Vec<&str>, index: usize) -> i32 {
+        let line = match lines.get(index) {
+            Some(line) => line,
+            None => panic!("get codetag line error"),
+        };
+
+        let infos: Vec<&str> = line.trim().split(" ").collect();
+        if infos.len() < 1 {
+            panic!("extract code for codetag font error");
+        }
+
+        let code = infos[0].trim();
+
+        let parse = if code.starts_with("0x") || code.starts_with("0X") {
+            i32::from_str_radix(&code[2..], 16)
+        } else if code.starts_with("0") {
+            i32::from_str_radix(&code[1..], 8)
+        } else {
+            code.parse()
+        };
+
+        let code: i32 = match parse {
+            Ok(code) => code,
+            Err(_) => panic!("parse code for codetag font error"),
+        };
+
+        code
+    }
+
+    fn read_codetag_font(
+        lines: &Vec<&str>,
+        headerline: &HeaderLine,
+        map: &mut HashMap<i32, FIGcharacter>,
+    ) {
+        let offset = (1 + headerline.comment_lines + 102 * headerline.height) as usize;
+        let codetag_height = (headerline.height + 1) as usize;
+        let codetag_lines = lines.len() - offset;
+
+        if codetag_lines % codetag_height != 0 {
+            panic!("codetag font is illegal.")
+        }
+
+        let size = codetag_lines / codetag_height;
+
+        for i in 0..size {
+            let start_index = offset + i * codetag_height;
+            if start_index >= lines.len() {
+                break;
+            }
+
+            let code = FIGfont::extract_codetag_font_code(lines, start_index);
+            let font =
+                FIGfont::extract_one_font(lines, code, start_index + 1, headerline.height as usize);
+            map.insert(code, font);
+        }
+    }
+
+    fn read_fonts(lines: &Vec<&str>, headerline: &HeaderLine) -> HashMap<i32, FIGcharacter> {
+        let mut map = HashMap::new();
+        FIGfont::read_required_font(lines, headerline, &mut map);
+        FIGfont::read_codetag_font(lines, headerline, &mut map);
         map
     }
 }
@@ -58,12 +190,12 @@ impl FIGfont {
 
         let header_line = FIGfont::read_header_line(&lines);
         let comments = FIGfont::read_comments(&lines, header_line.comment_lines);
-        let data = FIGfont::read_data(&lines, &header_line);
+        let fonts = FIGfont::read_fonts(&lines, &header_line);
 
         FIGfont {
             header_line,
             comments,
-            data,
+            fonts,
         }
     }
 
@@ -211,8 +343,48 @@ mod tests {
     #[test]
     fn new_fig_font() {
         let font = FIGfont::from_file("resources/standard.flf");
-        println!("header_line: {:?}", font.header_line);
-        println!("comments: {}", font.comments);
-        println!("one data: {:?}", font.data.get(&1));
+
+        let headerline = font.header_line;
+        assert_eq!("flf2a$ 6 5 16 15 11 0 24463", headerline.header_line);
+        assert_eq!("flf2a", headerline.signature);
+        assert_eq!("$", headerline.hardblank);
+        assert_eq!(6, headerline.height);
+        assert_eq!(5, headerline.baseline);
+        assert_eq!(16, headerline.max_length);
+        assert_eq!(15, headerline.old_layout);
+        assert_eq!(11, headerline.comment_lines);
+        assert_eq!(Some(0), headerline.print_direction);
+        assert_eq!(Some(24463), headerline.full_layout);
+        assert_eq!(None, headerline.codetag_count);
+
+        assert_eq!(
+            "Standard by Glenn Chappell & Ian Chai 3/93 -- based on Frank's .sig
+Includes ISO Latin-1
+figlet release 2.1 -- 12 Aug 1994
+Modified for figlet 2.2 by John Cowan <cowan@ccil.org>
+  to add Latin-{2,3,4,5} support (Unicode U+0100-017F).
+Permission is hereby given to modify this font, as long as the
+modifier's name is placed on a comment line.
+
+Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
+supported by FIGlet and FIGWin.  May also be slightly modified for better use
+of new full-width/kern/smush alternatives, but default output is NOT changed.",
+            font.comments
+        );
+
+        let one_font = font.fonts.get(&70); // F
+        assert!(one_font.is_some());
+
+        let one_font = one_font.unwrap();
+        assert_eq!(70, one_font.code);
+        assert_eq!(8, one_font.width);
+
+        assert_eq!(6, one_font.characters.len());
+        assert_eq!("  _____ ", one_font.characters.get(0).unwrap());
+        assert_eq!(" |  ___|", one_font.characters.get(1).unwrap());
+        assert_eq!(" | |_   ", one_font.characters.get(2).unwrap());
+        assert_eq!(" |  _|  ", one_font.characters.get(3).unwrap());
+        assert_eq!(" |_|    ", one_font.characters.get(4).unwrap());
+        assert_eq!("        ", one_font.characters.get(5).unwrap());
     }
 }
