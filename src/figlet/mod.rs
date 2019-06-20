@@ -1,13 +1,14 @@
 //! please visit [figfont](http://www.jave.de/figlet/figfont.html) to find detail.
 
 use std::collections::HashMap;
+use std::fmt;
 use std::fs;
-use std::i32;
+use std::u32;
 
 pub struct FIGfont {
     pub header_line: HeaderLine,
     pub comments: String,
-    pub fonts: HashMap<i32, FIGcharacter>,
+    pub fonts: HashMap<u32, FIGcharacter>,
 }
 
 impl FIGfont {
@@ -63,7 +64,7 @@ impl FIGfont {
 
     fn extract_one_font(
         lines: &Vec<&str>,
-        code: i32,
+        code: u32,
         start_index: usize,
         height: usize,
     ) -> FIGcharacter {
@@ -74,12 +75,14 @@ impl FIGfont {
             let one_line_character = FIGfont::extract_one_line(lines, index, height, is_last_index);
             characters.push(one_line_character);
         }
-        let width = characters[0].len() as i32;
+        let width = characters[0].len() as u32;
+        let height = height as u32;
 
         FIGcharacter {
             code,
             characters,
             width,
+            height,
         }
     }
 
@@ -87,14 +90,14 @@ impl FIGfont {
     fn read_required_font(
         lines: &Vec<&str>,
         headerline: &HeaderLine,
-        map: &mut HashMap<i32, FIGcharacter>,
+        map: &mut HashMap<u32, FIGcharacter>,
     ) {
         let offset = (1 + headerline.comment_lines) as usize;
         let height = headerline.height as usize;
         let size = lines.len();
 
         for i in 0..=94 {
-            let code = (i + 32) as i32;
+            let code = (i + 32) as u32;
             let start_index = offset + i * height;
             if start_index >= size {
                 break;
@@ -105,7 +108,7 @@ impl FIGfont {
         }
 
         let offset = offset + 95 * height;
-        let required_deutsch_characters_codes: [i32; 7] = [196, 214, 220, 228, 246, 252, 223];
+        let required_deutsch_characters_codes: [u32; 7] = [196, 214, 220, 228, 246, 252, 223];
         for i in 0..=6 {
             let code = required_deutsch_characters_codes[i];
             // let start_index = (offset + (95 + i) * height) as usize;
@@ -119,7 +122,7 @@ impl FIGfont {
         }
     }
 
-    fn extract_codetag_font_code(lines: &Vec<&str>, index: usize) -> i32 {
+    fn extract_codetag_font_code(lines: &Vec<&str>, index: usize) -> u32 {
         let line = match lines.get(index) {
             Some(line) => line,
             None => panic!("get codetag line error"),
@@ -133,14 +136,14 @@ impl FIGfont {
         let code = infos[0].trim();
 
         let parse = if code.starts_with("0x") || code.starts_with("0X") {
-            i32::from_str_radix(&code[2..], 16)
+            u32::from_str_radix(&code[2..], 16)
         } else if code.starts_with("0") {
-            i32::from_str_radix(&code[1..], 8)
+            u32::from_str_radix(&code[1..], 8)
         } else {
             code.parse()
         };
 
-        let code: i32 = match parse {
+        let code: u32 = match parse {
             Ok(code) => code,
             Err(_) => panic!("parse code for codetag font error"),
         };
@@ -151,7 +154,7 @@ impl FIGfont {
     fn read_codetag_font(
         lines: &Vec<&str>,
         headerline: &HeaderLine,
-        map: &mut HashMap<i32, FIGcharacter>,
+        map: &mut HashMap<u32, FIGcharacter>,
     ) {
         let offset = (1 + headerline.comment_lines + 102 * headerline.height) as usize;
         let codetag_height = (headerline.height + 1) as usize;
@@ -176,7 +179,7 @@ impl FIGfont {
         }
     }
 
-    fn read_fonts(lines: &Vec<&str>, headerline: &HeaderLine) -> HashMap<i32, FIGcharacter> {
+    fn read_fonts(lines: &Vec<&str>, headerline: &HeaderLine) -> HashMap<u32, FIGcharacter> {
         let mut map = HashMap::new();
         FIGfont::read_required_font(lines, headerline, &mut map);
         FIGfont::read_codetag_font(lines, headerline, &mut map);
@@ -204,8 +207,28 @@ impl FIGfont {
         FIGfont::from_content(&contents)
     }
 
-    pub fn convert(&self, _message: &str) -> Result<FIGure, &'static str> {
-        Err("")
+    pub fn standand() -> FIGfont {
+        let fontname = "resources/standard.flf";
+        let contents = FIGfont::read_font_file(fontname);
+        FIGfont::from_content(&contents)
+    }
+
+    pub fn convert(&self, message: &str) -> Option<FIGure> {
+        if message.len() == 0 {
+            return None;
+        }
+
+        let mut characters: Vec<&FIGcharacter> = vec![];
+        for ch in message.chars() {
+            let code = ch as u32;
+            if let Some(character) = self.fonts.get(&code) {
+                characters.push(character);
+            }
+        }
+        Some(FIGure {
+            characters,
+            height: self.header_line.height as u32,
+        })
     }
 }
 
@@ -305,22 +328,51 @@ impl HeaderLine {
 
 #[derive(Debug)]
 pub struct FIGcharacter {
-    pub code: i32,
+    pub code: u32,
     pub characters: Vec<String>,
-    pub width: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
-impl FIGcharacter {}
-
-pub struct FIGure {
-    pub characters: Vec<FIGcharacter>,
+impl fmt::Display for FIGcharacter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.characters.join("\n"))
+    }
 }
 
-impl FIGure {}
+pub struct FIGure<'a> {
+    pub characters: Vec<&'a FIGcharacter>,
+    pub height: u32,
+}
+
+impl<'a> FIGure<'a> {
+    fn is_not_empty(&self) -> bool {
+        self.characters.len() > 0 && self.height > 0
+    }
+}
+
+impl<'a> fmt::Display for FIGure<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.is_not_empty() {
+            let mut rs: Vec<&'a str> = vec![];
+            for i in 0..self.height {
+                for character in &self.characters {
+                    if let Some(line) = character.characters.get(i as usize) {
+                        rs.push(line);
+                    }
+                }
+                rs.push("\n");
+            }
+
+            write!(f, "{}", rs.join(""))
+        } else {
+            write!(f, "{}", "")
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
@@ -386,5 +438,12 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         assert_eq!(" |  _|  ", one_font.characters.get(3).unwrap());
         assert_eq!(" |_|    ", one_font.characters.get(4).unwrap());
         assert_eq!("        ", one_font.characters.get(5).unwrap());
+    }
+
+    #[test]
+    fn convert_message() {
+        let standard_font = FIGfont::standand();
+        let figure = standard_font.convert("hello");
+        assert!(figure.is_some());
     }
 }
