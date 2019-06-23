@@ -2,14 +2,9 @@
 
 A Rust library for [FIGlet](http://www.figlet.org/) to generate ascii art.
 
-## Usage
+# Usage
 
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-rs-figlet = "0.1.0"
-```
+TODO
 
 # License
 
