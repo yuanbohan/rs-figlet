@@ -11,10 +11,6 @@ Add this to your `Cargo.toml`:
 rs-figlet = "0.1.0"
 ```
 
-## Crate Features
-
-TBD
-
 # License
 
 rs-figlet is distributed under the terms of the Apache License (Version 2.0).
