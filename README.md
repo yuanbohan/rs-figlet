@@ -1,10 +1,6 @@
-# rs-figlet [![Build Status](https://travis-ci.com/yuanbohan/rs-figlet.svg?branch=master)](https://travis-ci.com/yuanbohan/rs-figlet)
+# figlet-rs [![Build Status](https://travis-ci.com/yuanbohan/rs-figlet.svg?branch=master)](https://travis-ci.com/yuanbohan/rs-figlet)
 
 A Rust library for [FIGlet](http://www.figlet.org/) to generate ascii art.
-
-# Usage
-
-TODO
 
 # License
 
