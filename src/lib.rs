@@ -1,9 +1,31 @@
-//! you can visit [figlet](http://www.figlet.org) and [figfont](http://www.jave.de/figlet/figfont.html) to find more detail
+//! you can visit [`figlet`] and [`figfont`] to find more details.
+//! you can visit [`fongdb`] to find more font.
+//!
+//! # Examples
+//!
+//! convert string literal using standard or specified font:
+//!
+//! ```
+//! use figlet_rs::FIGfont;
+//!
+//! fn main() {
+//!     let standard_font = FIGfont::standand().unwrap();
+//!     let figure = standard_font.convert("FIGlet");
+//!     assert!(figure.is_some());
+//!
+//!     let small_font = FIGfont::from_file("resources/small.flf").unwrap();
+//!     let figure = small_font.convert("FIGlet");
+//!     assert!(figure.is_some());
+//! }
+//! ```
+//! [`figlet`]: http://www.figlet.org
+//! [`figfont`]: http://www.jave.de/figlet/figfont.html
+//! [`fongdb`]: http://www.figlet.org/fontdb.cgi
 
 use std::collections::HashMap;
 use std::{fmt, fs};
 
-/// FIGlet font
+/// FIGlet font, which will hold the mapping from u32 code to FIGcharacter
 pub struct FIGfont {
     pub header_line: HeaderLine,
     pub comments: String,
@@ -205,7 +227,9 @@ impl FIGfont {
         FIGfont::from_content(&contents)
     }
 
-    /// the standard FIGlet font, which you can find [fontdb](http://www.figlet.org/fontdb.cgi)
+    /// the standard FIGlet font, which you can find [`fontdb`]
+    ///
+    /// [`fontdb`]: http://www.figlet.org/fontdb.cgi
     pub fn standand() -> Result<FIGfont, String> {
         let fontname = "resources/standard.flf";
         let contents = FIGfont::read_font_file(fontname)?;
@@ -237,7 +261,9 @@ impl FIGfont {
     }
 }
 
-/// the first line in FIGlet font, which you can find the documentation [headerline](http://www.jave.de/figlet/figfont.html#headerline)
+/// the first line in FIGlet font, which you can find the documentation [`headerline`]
+///
+/// [`headerline`]: http://www.jave.de/figlet/figfont.html#headerline
 #[derive(Debug)]
 pub struct HeaderLine {
     pub header_line: String,
@@ -328,6 +354,7 @@ impl HeaderLine {
     }
 }
 
+/// the matched ascii art of one character
 #[derive(Debug)]
 pub struct FIGcharacter {
     pub code: u32,
@@ -342,6 +369,7 @@ impl fmt::Display for FIGcharacter {
     }
 }
 
+/// the matched ascii arts of string literal
 pub struct FIGure<'a> {
     pub characters: Vec<&'a FIGcharacter>,
     pub height: u32,
