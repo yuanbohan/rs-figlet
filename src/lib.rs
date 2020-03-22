@@ -235,9 +235,8 @@ impl FIGfont {
     ///
     /// [`fontdb`]: http://www.figlet.org/fontdb.cgi
     pub fn standand() -> Result<FIGfont, String> {
-        let fontname = "resources/standard.flf";
-        let contents = FIGfont::read_font_file(fontname)?;
-        FIGfont::from_content(&contents)
+        let contents = std::include_str!("standard.flf");
+        FIGfont::from_content(contents)
     }
 
     /// convert string literal to FIGure
@@ -437,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_new_figfont() {
-        let font = FIGfont::from_file("resources/standard.flf");
+        let font = FIGfont::standand();
         assert!(font.is_ok());
         let font = font.unwrap();
 
