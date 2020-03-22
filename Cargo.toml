@@ -1,7 +1,7 @@
 [package]
 name = "figlet-rs"
 version = "0.1.2"
-authors = ["hanyuanbo <yuanbo.han@gmail.com>"]
+authors = ["yuanbohan <yuanbo.han@gmail.com>"]
 license = "Apache-2.0"
 edition = "2018"
 readme = "README.md"
