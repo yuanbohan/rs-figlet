@@ -12,5 +12,8 @@ Rust implementation of [FIGlet](http://www.figlet.org/) to create ascii art
 """
 keywords = ["figlet", "ascii"]
 categories = ["no-std"]
+exclude = [
+    "resources/*",
+]
 
 [dependencies]
