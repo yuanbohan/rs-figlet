@@ -8,15 +8,13 @@
 //! ```
 //! use figlet_rs::FIGfont;
 //!
-//! fn main() {
-//!     let standard_font = FIGfont::standand().unwrap();
-//!     let figure = standard_font.convert("FIGlet");
-//!     assert!(figure.is_some());
+//! let standard_font = FIGfont::standand().unwrap();
+//! let figure = standard_font.convert("FIGlet");
+//! assert!(figure.is_some());
 //!
-//!     let small_font = FIGfont::from_file("resources/small.flf").unwrap();
-//!     let figure = small_font.convert("FIGlet");
-//!     assert!(figure.is_some());
-//! }
+//! let small_font = FIGfont::from_file("resources/small.flf").unwrap();
+//! let figure = small_font.convert("FIGlet");
+//! assert!(figure.is_some());
 //! ```
 //! [`figlet`]: http://www.figlet.org
 //! [`figfont`]: http://www.jave.de/figlet/figfont.html
@@ -41,20 +39,18 @@ impl FIGfont {
         HeaderLine::new(header_line)
     }
 
-    fn read_comments(lines: &Vec<&str>, comment_count: i32) -> Result<String, String> {
+    fn read_comments(lines: &[&str], comment_count: i32) -> Result<String, String> {
         let length = lines.len() as i32;
         if length < comment_count + 1 {
             Err("can't get comments from font".to_string())
         } else {
-            let comment = lines[1..(1 + comment_count) as usize]
-                .join("\n")
-                .to_string();
+            let comment = lines[1..(1 + comment_count) as usize].join("\n");
             Ok(comment)
         }
     }
 
     fn extract_one_line(
-        lines: &Vec<&str>,
+        lines: &[&str],
         index: usize,
         height: usize,
         is_last_index: bool,
@@ -76,7 +72,7 @@ impl FIGfont {
     }
 
     fn extract_one_font(
-        lines: &Vec<&str>,
+        lines: &[&str],
         code: u32,
         start_index: usize,
         height: usize,
@@ -102,7 +98,7 @@ impl FIGfont {
 
     // 32-126, 196, 214, 220, 228, 246, 252, 223
     fn read_required_font(
-        lines: &Vec<&str>,
+        lines: &[&str],
         headerline: &HeaderLine,
         map: &mut HashMap<u32, FIGcharacter>,
     ) -> Result<(), String> {
@@ -123,26 +119,26 @@ impl FIGfont {
 
         let offset = offset + 95 * height;
         let required_deutsch_characters_codes: [u32; 7] = [196, 214, 220, 228, 246, 252, 223];
-        for i in 0..=6 {
-            let code = required_deutsch_characters_codes[i];
+        for (i, code) in required_deutsch_characters_codes.iter().enumerate() {
             let start_index = offset + i * height;
             if start_index >= size {
                 break;
             }
 
-            let font = FIGfont::extract_one_font(lines, code, start_index, height)?;
-            map.insert(code, font);
+            let font = FIGfont::extract_one_font(lines, *code, start_index, height)?;
+            map.insert(*code, font);
         }
+
         Ok(())
     }
 
-    fn extract_codetag_font_code(lines: &Vec<&str>, index: usize) -> Result<u32, String> {
+    fn extract_codetag_font_code(lines: &[&str], index: usize) -> Result<u32, String> {
         let line = lines
             .get(index)
-            .ok_or("get codetag line error".to_string())?;
+            .ok_or_else(|| "get codetag line error".to_string())?;
 
-        let infos: Vec<&str> = line.trim().split(" ").collect();
-        if infos.len() < 1 {
+        let infos: Vec<&str> = line.trim().split(' ').collect();
+        if infos.is_empty() {
             return Err("extract code for codetag font error".to_string());
         }
 
@@ -150,7 +146,7 @@ impl FIGfont {
 
         let code = if code.starts_with("0x") || code.starts_with("0X") {
             u32::from_str_radix(&code[2..], 16)
-        } else if code.starts_with("0") {
+        } else if code.starts_with('0') {
             u32::from_str_radix(&code[1..], 8)
         } else {
             code.parse()
@@ -159,7 +155,7 @@ impl FIGfont {
     }
 
     fn read_codetag_font(
-        lines: &Vec<&str>,
+        lines: &[&str],
         headerline: &HeaderLine,
         map: &mut HashMap<u32, FIGcharacter>,
     ) -> Result<(), String> {
@@ -193,7 +189,7 @@ impl FIGfont {
     }
 
     fn read_fonts(
-        lines: &Vec<&str>,
+        lines: &[&str],
         headerline: &HeaderLine,
     ) -> Result<HashMap<u32, FIGcharacter>, String> {
         let mut map = HashMap::new();
@@ -238,7 +234,7 @@ impl FIGfont {
 
     /// convert string literal to FIGure
     pub fn convert(&self, message: &str) -> Option<FIGure> {
-        if message.len() == 0 {
+        if message.is_empty() {
             return None;
         }
 
@@ -250,7 +246,7 @@ impl FIGfont {
             }
         }
 
-        if characters.len() == 0 {
+        if characters.is_empty() {
             return None;
         }
 
@@ -298,19 +294,22 @@ impl HeaderLine {
         }
     }
 
-    fn extract_required_info(infos: &Vec<&str>, index: usize, field: &str) -> Result<i32, String> {
-        let val = infos.get(index).expect(&format!(
-            "can't get field:{} index:{} from {}",
-            field,
-            index,
-            infos.join(",")
-        ));
+    fn extract_required_info(infos: &[&str], index: usize, field: &str) -> Result<i32, String> {
+        let val = match infos.get(index) {
+            Some(val) => Ok(val),
+            None => Err(format!(
+                "can't get field:{} index:{} from {}",
+                field,
+                index,
+                infos.join(",")
+            )),
+        }?;
 
         val.parse::<i32>()
             .map_err(|_e| format!("can't parse required field:{} of {} to i32", field, val))
     }
 
-    fn extract_optional_info(infos: &Vec<&str>, index: usize, _field: &str) -> Option<i32> {
+    fn extract_optional_info(infos: &[&str], index: usize, _field: &str) -> Option<i32> {
         if let Some(val) = infos.get(index) {
             val.parse().ok()
         } else {
@@ -319,7 +318,7 @@ impl HeaderLine {
     }
 
     pub fn new(header_line: &str) -> Result<HeaderLine, String> {
-        let infos: Vec<&str> = header_line.trim().split(" ").collect();
+        let infos: Vec<&str> = header_line.trim().split(' ').collect();
 
         if infos.len() < 6 {
             return Err("headerline is illegal".to_string());
@@ -377,7 +376,7 @@ pub struct FIGure<'a> {
 
 impl<'a> FIGure<'a> {
     fn is_not_empty(&self) -> bool {
-        self.characters.len() > 0 && self.height > 0
+        !self.characters.is_empty() && self.height > 0
     }
 }
 
@@ -396,7 +395,7 @@ impl<'a> fmt::Display for FIGure<'a> {
 
             write!(f, "{}", rs.join(""))
         } else {
-            write!(f, "{}", "")
+            write!(f, "")
         }
     }
 }
