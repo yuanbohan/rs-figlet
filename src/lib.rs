@@ -3,6 +3,8 @@
 //!
 //! # Examples
 //!
+//! download [`small.flf`] and place it to the `resources` folder.
+//!
 //! convert string literal using standard or specified font:
 //!
 //! ```
@@ -19,6 +21,7 @@
 //! [`figlet`]: http://www.figlet.org
 //! [`figfont`]: http://www.jave.de/figlet/figfont.html
 //! [`fongdb`]: http://www.figlet.org/fontdb.cgi
+//! [`small.flf`]: http://www.figlet.org/fonts/small.flf
 
 use std::collections::HashMap;
 use std::{fmt, fs};
@@ -53,6 +56,7 @@ impl FIGfont {
         lines: &[&str],
         index: usize,
         height: usize,
+        hardblank: char,
         is_last_index: bool,
     ) -> Result<String, String> {
         let line = lines
@@ -68,7 +72,7 @@ impl FIGfont {
             width -= 1;
         }
 
-        Ok(String::from(&line[..width]))
+        Ok(line[..width].replace(hardblank, " ").to_string())
     }
 
     fn extract_one_font(
@@ -76,13 +80,14 @@ impl FIGfont {
         code: u32,
         start_index: usize,
         height: usize,
+        hardblank: char,
     ) -> Result<FIGcharacter, String> {
         let mut characters = vec![];
         for i in 0..height {
             let index = start_index + i as usize;
             let is_last_index = i == height - 1;
             let one_line_character =
-                FIGfont::extract_one_line(lines, index, height, is_last_index)?;
+                FIGfont::extract_one_line(lines, index, height, hardblank, is_last_index)?;
             characters.push(one_line_character);
         }
         let width = characters[0].len() as u32;
@@ -113,7 +118,8 @@ impl FIGfont {
                 break;
             }
 
-            let font = FIGfont::extract_one_font(lines, code, start_index, height)?;
+            let font =
+                FIGfont::extract_one_font(lines, code, start_index, height, headerline.hardblank)?;
             map.insert(code, font);
         }
 
@@ -125,7 +131,8 @@ impl FIGfont {
                 break;
             }
 
-            let font = FIGfont::extract_one_font(lines, *code, start_index, height)?;
+            let font =
+                FIGfont::extract_one_font(lines, *code, start_index, height, headerline.hardblank)?;
             map.insert(*code, font);
         }
 
@@ -181,6 +188,7 @@ impl FIGfont {
                 code,
                 start_index + 1,
                 headerline.height as usize,
+                headerline.hardblank,
             )?;
             map.insert(code, font);
         }
@@ -266,7 +274,7 @@ pub struct HeaderLine {
 
     // required
     pub signature: String,
-    pub hardblank: String,
+    pub hardblank: char,
     pub height: i32,
     pub baseline: i32,
     pub max_length: i32,
@@ -282,15 +290,18 @@ pub struct HeaderLine {
 impl HeaderLine {
     fn extract_signature_with_hardblank(
         signature_with_hardblank: &str,
-    ) -> Result<(String, String), String> {
+    ) -> Result<(String, char), String> {
         if signature_with_hardblank.len() < 6 {
             Err("can't get signature with hardblank from first line of font".to_string())
         } else {
             let hardblank_index = signature_with_hardblank.len() - 1;
             let signature = &signature_with_hardblank[..hardblank_index];
-            let hardblank = &signature_with_hardblank[hardblank_index..];
+            let hardblank = signature_with_hardblank[hardblank_index..]
+                .chars()
+                .next()
+                .unwrap();
 
-            Ok((String::from(signature), String::from(hardblank)))
+            Ok((String::from(signature), hardblank))
         }
     }
 
@@ -413,7 +424,7 @@ mod tests {
 
         assert_eq!(line, headerline.header_line);
         assert_eq!("flf2a", headerline.signature);
-        assert_eq!("$", headerline.hardblank);
+        assert_eq!('$', headerline.hardblank);
         assert_eq!(6, headerline.height);
         assert_eq!(5, headerline.baseline);
         assert_eq!(20, headerline.max_length);
@@ -433,7 +444,7 @@ mod tests {
         let headerline = font.header_line;
         assert_eq!("flf2a$ 6 5 16 15 11 0 24463", headerline.header_line);
         assert_eq!("flf2a", headerline.signature);
-        assert_eq!("$", headerline.hardblank);
+        assert_eq!('$', headerline.hardblank);
         assert_eq!(6, headerline.height);
         assert_eq!(5, headerline.baseline);
         assert_eq!(16, headerline.max_length);
