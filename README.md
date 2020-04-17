@@ -13,26 +13,13 @@ use figlet_rs::FIGfont;
 
 fn main() {
     let standard_font = FIGfont::standand().unwrap();
-    let figure = standard_font.convert("FIGlet");
+    let figure = standard_font.convert("Hello Rust");
     assert!(figure.is_some());
-
-    let small_font = FIGfont::from_file("resources/small.flf").unwrap();
-    let figure = small_font.convert("FIGlet");
-    assert!(figure.is_some());
+    println!("{}", figure.unwrap());
 }
 ```
 
-# Standard Font Example
-
-`Hello Rust`
-
-```
-  _   _          _   _             ____                  _
- | | | |   ___  | | | |   ___     |  _ \   _   _   ___  | |_
- | |_| |  / _ \ | | | |  / _ \    | |_) | | | | | / __| | __|
- |  _  | |  __/ | | | | | (_) |   |  _ <  | |_| | \__ \ | |_
- |_| |_|  \___| |_| |_|  \___/    |_| \_\  \__,_| |___/  \__|
-```
+![figlet-sample](./figlet-sample.png)
 
 # License
 
