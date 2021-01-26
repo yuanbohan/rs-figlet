@@ -10,7 +10,7 @@
 //! ```
 //! use figlet_rs::FIGfont;
 //!
-//! let standard_font = FIGfont::standand().unwrap();
+//! let standard_font = FIGfont::standard().unwrap();
 //! let figure = standard_font.convert("FIGlet");
 //! assert!(figure.is_some());
 //!
@@ -234,7 +234,7 @@ impl FIGfont {
     /// the standard FIGlet font, which you can find [`fontdb`]
     ///
     /// [`fontdb`]: http://www.figlet.org/fontdb.cgi
-    pub fn standand() -> Result<FIGfont, String> {
+    pub fn standard() -> Result<FIGfont, String> {
         let contents = std::include_str!("standard.flf");
         FIGfont::from_content(contents)
     }
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_new_figfont() {
-        let font = FIGfont::standand();
+        let font = FIGfont::standard();
         assert!(font.is_ok());
         let font = font.unwrap();
 
@@ -487,7 +487,7 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
 
     #[test]
     fn test_convert() {
-        let standard_font = FIGfont::standand();
+        let standard_font = FIGfont::standard();
         assert!(standard_font.is_ok());
         let standard_font = standard_font.unwrap();
 
