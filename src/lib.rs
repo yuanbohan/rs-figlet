@@ -235,7 +235,7 @@ impl FIGfont {
     ///
     /// [`fontdb`]: http://www.figlet.org/fontdb.cgi
     pub fn standand() -> Result<FIGfont, String> {
-        let contents = std::include_str!("standard.flf");
+        let contents = std::include_str!("./fonts/standard.flf");
         FIGfont::from_content(contents)
     }
 
