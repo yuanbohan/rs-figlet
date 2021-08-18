@@ -226,6 +226,10 @@ impl FIGfont {
     }
 
     /// generate FIGlet font from specified file
+    ///
+    /// All fonts found at [`fontdb`] get shipped with the same name
+    ///
+    /// [`fontdb`]: http://www.figlet.org/fontdb.cgi
     pub fn from_file(fontname: &str) -> Result<FIGfont, String> {
         let contents = FIGfont::read_font_file(fontname)?;
         FIGfont::from_content(&contents)
