@@ -63,10 +63,6 @@ impl FIGfont {
             .get(index)
             .ok_or(format!("can't get line at specified index:{}", index))?;
 
-        if line.len() <= 2 {
-            return Err(format!("one line len can't be less than 2. it is:{}", line));
-        }
-
         let mut width = line.len() - 1;
         if is_last_index && height != 1 {
             width -= 1;
