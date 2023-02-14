@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use std::{fmt, fs};
 
 /// FIGlet font, which will hold the mapping from u32 code to FIGcharacter
+#[derive(Debug)]
 pub struct FIGfont {
     pub header_line: HeaderLine,
     pub comments: String,
@@ -35,11 +36,11 @@ pub struct FIGfont {
 
 impl FIGfont {
     fn read_font_file(filename: &str) -> Result<String, String> {
-        fs::read_to_string(filename).map_err(|e| format!("{:?}", e))
+        fs::read_to_string(filename).map_err(|e| format!("{e:?}"))
     }
 
     fn read_header_line(header_line: &str) -> Result<HeaderLine, String> {
-        HeaderLine::new(header_line)
+        HeaderLine::try_from(header_line)
     }
 
     fn read_comments(lines: &[&str], comment_count: i32) -> Result<String, String> {
@@ -61,14 +62,14 @@ impl FIGfont {
     ) -> Result<String, String> {
         let line = lines
             .get(index)
-            .ok_or(format!("can't get line at specified index:{}", index))?;
+            .ok_or(format!("can't get line at specified index:{index}"))?;
 
         let mut width = line.len() - 1;
         if is_last_index && height != 1 {
             width -= 1;
         }
 
-        Ok(line[..width].replace(hardblank, " ").to_string())
+        Ok(line[..width].replace(hardblank, " "))
     }
 
     fn extract_one_font(
@@ -147,14 +148,17 @@ impl FIGfont {
 
         let code = infos[0].trim();
 
-        let code = if code.starts_with("0x") || code.starts_with("0X") {
-            u32::from_str_radix(&code[2..], 16)
-        } else if code.starts_with('0') {
-            u32::from_str_radix(&code[1..], 8)
+        let code = if let Some(s) = code.strip_prefix("0x") {
+            u32::from_str_radix(s, 16)
+        } else if let Some(s) = code.strip_prefix("0X") {
+            u32::from_str_radix(s, 16)
+        } else if let Some(s) = code.strip_prefix('0') {
+            u32::from_str_radix(s, 8)
         } else {
             code.parse()
         };
-        code.map_err(|e| format!("{:?}", e))
+
+        code.map_err(|e| format!("{e:?}"))
     }
 
     fn read_codetag_font(
@@ -210,7 +214,7 @@ impl FIGfont {
             return Err("can not generate FIGlet font from empty string".to_string());
         }
 
-        let header_line = FIGfont::read_header_line(&lines.get(0).unwrap())?;
+        let header_line = FIGfont::read_header_line(lines.first().unwrap())?;
         let comments = FIGfont::read_comments(&lines, header_line.comment_lines)?;
         let fonts = FIGfont::read_fonts(&lines, &header_line)?;
 
@@ -304,15 +308,13 @@ impl HeaderLine {
         let val = match infos.get(index) {
             Some(val) => Ok(val),
             None => Err(format!(
-                "can't get field:{} index:{} from {}",
-                field,
-                index,
+                "can't get field:{field} index:{index} from {}",
                 infos.join(",")
             )),
         }?;
 
-        val.parse::<i32>()
-            .map_err(|_e| format!("can't parse required field:{} of {} to i32", field, val))
+        val.parse()
+            .map_err(|_| format!("can't parse required field:{field} of {val} to i32"))
     }
 
     fn extract_optional_info(infos: &[&str], index: usize, _field: &str) -> Option<i32> {
@@ -322,8 +324,12 @@ impl HeaderLine {
             None
         }
     }
+}
 
-    pub fn new(header_line: &str) -> Result<HeaderLine, String> {
+impl TryFrom<&str> for HeaderLine {
+    type Error = String;
+
+    fn try_from(header_line: &str) -> Result<Self, Self::Error> {
         let infos: Vec<&str> = header_line.trim().split(' ').collect();
 
         if infos.len() < 6 {
@@ -331,7 +337,7 @@ impl HeaderLine {
         }
 
         let signature_with_hardblank =
-            HeaderLine::extract_signature_with_hardblank(&infos.get(0).unwrap())?;
+            HeaderLine::extract_signature_with_hardblank(infos.first().unwrap())?;
 
         let height = HeaderLine::extract_required_info(&infos, 1, "height")?;
         let baseline = HeaderLine::extract_required_info(&infos, 2, "baseline")?;
@@ -375,6 +381,7 @@ impl fmt::Display for FIGcharacter {
 }
 
 /// the matched ascii arts of string literal
+#[derive(Debug)]
 pub struct FIGure<'a> {
     pub characters: Vec<&'a FIGcharacter>,
     pub height: u32,
@@ -413,7 +420,7 @@ mod tests {
     #[test]
     fn test_new_headerline() {
         let line = "flf2a$ 6 5 20 15 3 0 143 229";
-        let headerline = HeaderLine::new(line);
+        let headerline = HeaderLine::try_from(line);
         assert!(headerline.is_ok());
         let headerline = headerline.unwrap();
 
