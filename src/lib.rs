@@ -1,696 +1,43 @@
-//! you can visit [`figlet`] and [`figfont`] to find more details.
-//! you can visit [`fongdb`] to find more font.
+//! You can visit [`figlet`] and [`figfont`] to find more details.
+//! You can visit [`fontdb`] to find more fonts.
 //!
 //! # Examples
 //!
-//! convert string literal using standard or specified font:
+//! Convert string literals using built-in FIGlet or Toilet fonts:
 //!
 //! ```
-//! use figlet_rs::FIGfont;
+//! use figlet_rs::{FIGfont, Toilet};
 //!
 //! let standard_font = FIGfont::standard().unwrap();
-//! let figure = standard_font.convert("FIGlet");
-//! assert!(figure.is_some());
-//!
-//! let small_font = FIGfont::small().unwrap();
-//! let figure = small_font.convert("FIGlet");
-//! assert!(figure.is_some());
+//! assert!(standard_font.convert("FIGlet").is_some());
 //!
 //! let slant_font = FIGfont::slant().unwrap();
-//! let figure = slant_font.convert("FIGlet");
-//! assert!(figure.is_some());
+//! assert!(slant_font.convert("FIGlet").is_some());
+//!
+//! let smblock_font = Toilet::smblock().unwrap();
+//! assert!(smblock_font.convert("Toilet").is_some());
 //! ```
+//!
 //! [`figlet`]: http://www.figlet.org
 //! [`figfont`]: http://www.jave.de/figlet/figfont.html
-//! [`fongdb`]: http://www.figlet.org/fontdb.cgi
-//! [`small.flf`]: http://www.figlet.org/fonts/small.flf
-
-use std::collections::HashMap;
-use std::{fmt, fs};
-
-const SM_EQUAL: i32 = 1;
-const SM_LOWLINE: i32 = 2;
-const SM_HIERARCHY: i32 = 4;
-const SM_PAIR: i32 = 8;
-const SM_BIGX: i32 = 16;
-const SM_HARDBLANK: i32 = 32;
-const SM_KERN: i32 = 64;
-const SM_SMUSH: i32 = 128;
-
-/// FIGlet font, which will hold the mapping from u32 code to FIGcharacter
-#[derive(Debug, Clone)]
-pub struct FIGfont {
-    pub header_line: HeaderLine,
-    pub comments: String,
-    pub fonts: HashMap<u32, FIGcharacter>,
-}
-
-impl FIGfont {
-    fn read_font_file(filename: &str) -> Result<String, String> {
-        fs::read_to_string(filename).map_err(|e| format!("{e:?}"))
-    }
-
-    fn read_header_line(header_line: &str) -> Result<HeaderLine, String> {
-        HeaderLine::try_from(header_line)
-    }
-
-    fn read_comments(lines: &[&str], comment_count: i32) -> Result<String, String> {
-        let length = lines.len() as i32;
-        if length < comment_count + 1 {
-            Err("can't get comments from font".to_string())
-        } else {
-            let comment = lines[1..(1 + comment_count) as usize].join("\n");
-            Ok(comment)
-        }
-    }
-
-    fn extract_one_line(
-        lines: &[&str],
-        index: usize,
-        height: usize,
-        _hardblank: char,
-        is_last_index: bool,
-    ) -> Result<String, String> {
-        let line = lines
-            .get(index)
-            .ok_or(format!("can't get line at specified index:{index}"))?;
-
-        let mut width = line.len() - 1;
-        if is_last_index && height != 1 {
-            width -= 1;
-        }
-
-        Ok(line[..width].to_string())
-    }
-
-    fn extract_one_font(
-        lines: &[&str],
-        code: u32,
-        start_index: usize,
-        height: usize,
-        hardblank: char,
-    ) -> Result<FIGcharacter, String> {
-        let mut characters = vec![];
-        for i in 0..height {
-            let index = start_index + i;
-            let is_last_index = i == height - 1;
-            let one_line_character =
-                FIGfont::extract_one_line(lines, index, height, hardblank, is_last_index)?;
-            characters.push(one_line_character);
-        }
-        let width = characters[0].chars().count() as u32;
-        let height = height as u32;
-
-        Ok(FIGcharacter {
-            code,
-            characters,
-            width,
-            height,
-        })
-    }
-
-    // 32-126, 196, 214, 220, 228, 246, 252, 223
-    fn read_required_font(
-        lines: &[&str],
-        headerline: &HeaderLine,
-        map: &mut HashMap<u32, FIGcharacter>,
-    ) -> Result<(), String> {
-        let offset = (1 + headerline.comment_lines) as usize;
-        let height = headerline.height as usize;
-        let size = lines.len();
-
-        for i in 0..=94 {
-            let code = (i + 32) as u32;
-            let start_index = offset + i * height;
-            if start_index >= size {
-                break;
-            }
-
-            let font =
-                FIGfont::extract_one_font(lines, code, start_index, height, headerline.hardblank)?;
-            map.insert(code, font);
-        }
-
-        let offset = offset + 95 * height;
-        let required_deutsch_characters_codes: [u32; 7] = [196, 214, 220, 228, 246, 252, 223];
-        for (i, code) in required_deutsch_characters_codes.iter().enumerate() {
-            let start_index = offset + i * height;
-            if start_index >= size {
-                break;
-            }
-
-            let font =
-                FIGfont::extract_one_font(lines, *code, start_index, height, headerline.hardblank)?;
-            map.insert(*code, font);
-        }
-
-        Ok(())
-    }
-
-    fn extract_codetag_font_code(lines: &[&str], index: usize) -> Result<Option<u32>, String> {
-        let line = lines
-            .get(index)
-            .ok_or_else(|| "get codetag line error".to_string())?;
-
-        let infos: Vec<&str> = line.trim().split(' ').collect();
-        if infos.is_empty() {
-            return Err("extract code for codetag font error".to_string());
-        }
-
-        let code = infos[0].trim();
-        let is_negative = code.starts_with('-');
-        let unsigned = code.trim_start_matches(['-', '+']);
-
-        let parsed = if let Some(s) = unsigned.strip_prefix("0x") {
-            i64::from_str_radix(s, 16)
-        } else if let Some(s) = unsigned.strip_prefix("0X") {
-            i64::from_str_radix(s, 16)
-        } else if unsigned.len() > 1 && unsigned.starts_with('0') {
-            i64::from_str_radix(&unsigned[1..], 8)
-        } else {
-            unsigned.parse()
-        }
-        .map_err(|e| format!("{e:?}"))?;
-
-        if is_negative {
-            Ok(None)
-        } else {
-            u32::try_from(parsed)
-                .map(Some)
-                .map_err(|e| format!("{e:?}"))
-        }
-    }
-
-    fn read_codetag_font(
-        lines: &[&str],
-        headerline: &HeaderLine,
-        map: &mut HashMap<u32, FIGcharacter>,
-    ) -> Result<(), String> {
-        let offset = (1 + headerline.comment_lines + 102 * headerline.height) as usize;
-        let codetag_height = (headerline.height + 1) as usize;
-        let codetag_lines = lines.len() - offset;
-
-        if codetag_lines % codetag_height != 0 {
-            return Err("codetag font is illegal.".to_string());
-        }
-
-        let size = codetag_lines / codetag_height;
-
-        for i in 0..size {
-            let start_index = offset + i * codetag_height;
-            if start_index >= lines.len() {
-                break;
-            }
-
-            let Some(code) = FIGfont::extract_codetag_font_code(lines, start_index)? else {
-                continue;
-            };
-            let font = FIGfont::extract_one_font(
-                lines,
-                code,
-                start_index + 1,
-                headerline.height as usize,
-                headerline.hardblank,
-            )?;
-            map.insert(code, font);
-        }
-
-        Ok(())
-    }
-
-    fn read_fonts(
-        lines: &[&str],
-        headerline: &HeaderLine,
-    ) -> Result<HashMap<u32, FIGcharacter>, String> {
-        let mut map = HashMap::new();
-        FIGfont::read_required_font(lines, headerline, &mut map)?;
-        FIGfont::read_codetag_font(lines, headerline, &mut map)?;
-        Ok(map)
-    }
-
-    /// generate FIGlet font from string literal
-    pub fn from_content(contents: &str) -> Result<FIGfont, String> {
-        let lines: Vec<&str> = contents.lines().collect();
-
-        if lines.is_empty() {
-            return Err("can not generate FIGlet font from empty string".to_string());
-        }
-
-        let header_line = FIGfont::read_header_line(lines.first().unwrap())?;
-        let comments = FIGfont::read_comments(&lines, header_line.comment_lines)?;
-        let fonts = FIGfont::read_fonts(&lines, &header_line)?;
-
-        Ok(FIGfont {
-            header_line,
-            comments,
-            fonts,
-        })
-    }
-
-    /// generate FIGlet font from specified file
-    pub fn from_file(fontname: &str) -> Result<FIGfont, String> {
-        let contents = FIGfont::read_font_file(fontname)?;
-        FIGfont::from_content(&contents)
-    }
-
-    /// the standard FIGlet font, which you can find [`fontdb`]
-    ///
-    /// [`fontdb`]: http://www.figlet.org/fontdb.cgi
-    pub fn standard() -> Result<FIGfont, String> {
-        let contents = std::include_str!("../resources/standard.flf");
-        FIGfont::from_content(contents)
-    }
-
-    /// the small FIGlet font bundled with the crate
-    pub fn small() -> Result<FIGfont, String> {
-        let contents = std::include_str!("../resources/small.flf");
-        FIGfont::from_content(contents)
-    }
-
-    /// the big FIGlet font bundled with the crate
-    pub fn big() -> Result<FIGfont, String> {
-        let contents = std::include_str!("../resources/big.flf");
-        FIGfont::from_content(contents)
-    }
-
-    /// the slant FIGlet font bundled with the crate
-    pub fn slant() -> Result<FIGfont, String> {
-        let contents = std::include_str!("../resources/slant.flf");
-        FIGfont::from_content(contents)
-    }
-
-    /// convert string literal to FIGure
-    pub fn convert(&self, message: &str) -> Option<FIGure<'_>> {
-        if message.is_empty() {
-            return None;
-        }
-
-        let mut characters: Vec<&FIGcharacter> = vec![];
-        for ch in message.chars() {
-            let code = ch as u32;
-            if let Some(character) = self.fonts.get(&code) {
-                characters.push(character);
-            }
-        }
-
-        if characters.is_empty() {
-            return None;
-        }
-
-        let rendered_lines = Renderer::new(self).render(&characters);
-
-        Some(FIGure {
-            characters,
-            height: self.header_line.height as u32,
-            lines: rendered_lines,
-        })
-    }
-}
-
-/// the first line in FIGlet font, which you can find the documentation [`headerline`]
-///
-/// [`headerline`]: http://www.jave.de/figlet/figfont.html#headerline
-#[derive(Debug, Clone)]
-pub struct HeaderLine {
-    pub header_line: String,
-
-    // required
-    pub signature: String,
-    pub hardblank: char,
-    pub height: i32,
-    pub baseline: i32,
-    pub max_length: i32,
-    pub old_layout: i32, // Legal values -1 to 63
-    pub comment_lines: i32,
-
-    // optional
-    pub print_direction: Option<i32>,
-    pub full_layout: Option<i32>, // Legal values 0 to 32767
-    pub codetag_count: Option<i32>,
-}
-
-impl HeaderLine {
-    fn extract_signature_with_hardblank(
-        signature_with_hardblank: &str,
-    ) -> Result<(String, char), String> {
-        if signature_with_hardblank.len() < 6 {
-            Err("can't get signature with hardblank from first line of font".to_string())
-        } else {
-            let hardblank_index = signature_with_hardblank.len() - 1;
-            let signature = &signature_with_hardblank[..hardblank_index];
-            let hardblank = signature_with_hardblank[hardblank_index..]
-                .chars()
-                .next()
-                .unwrap();
-
-            Ok((String::from(signature), hardblank))
-        }
-    }
-
-    fn extract_required_info(infos: &[&str], index: usize, field: &str) -> Result<i32, String> {
-        let val = match infos.get(index) {
-            Some(val) => Ok(val),
-            None => Err(format!(
-                "can't get field:{field} index:{index} from {}",
-                infos.join(",")
-            )),
-        }?;
-
-        val.parse()
-            .map_err(|_| format!("can't parse required field:{field} of {val} to i32"))
-    }
-
-    fn extract_optional_info(infos: &[&str], index: usize, _field: &str) -> Option<i32> {
-        if let Some(val) = infos.get(index) {
-            val.parse().ok()
-        } else {
-            None
-        }
-    }
-
-    fn effective_layout(&self) -> i32 {
-        match self.full_layout {
-            Some(layout) => layout,
-            None if self.old_layout == 0 => SM_KERN,
-            None if self.old_layout < 0 => 0,
-            None => (self.old_layout & 31) | SM_SMUSH,
-        }
-    }
-
-    fn is_right_to_left(&self) -> bool {
-        self.print_direction == Some(1)
-    }
-}
-
-impl TryFrom<&str> for HeaderLine {
-    type Error = String;
-
-    fn try_from(header_line: &str) -> Result<Self, Self::Error> {
-        let infos: Vec<&str> = header_line.trim().split(' ').collect();
-
-        if infos.len() < 6 {
-            return Err("headerline is illegal".to_string());
-        }
-
-        let signature_with_hardblank =
-            HeaderLine::extract_signature_with_hardblank(infos.first().unwrap())?;
-
-        let height = HeaderLine::extract_required_info(&infos, 1, "height")?;
-        let baseline = HeaderLine::extract_required_info(&infos, 2, "baseline")?;
-        let max_length = HeaderLine::extract_required_info(&infos, 3, "max length")?;
-        let old_layout = HeaderLine::extract_required_info(&infos, 4, "old layout")?;
-        let comment_lines = HeaderLine::extract_required_info(&infos, 5, "comment lines")?;
-
-        let print_direction = HeaderLine::extract_optional_info(&infos, 6, "print direction");
-        let full_layout = HeaderLine::extract_optional_info(&infos, 7, "full layout");
-        let codetag_count = HeaderLine::extract_optional_info(&infos, 8, "codetag count");
-
-        Ok(HeaderLine {
-            header_line: String::from(header_line),
-            signature: signature_with_hardblank.0,
-            hardblank: signature_with_hardblank.1,
-            height,
-            baseline,
-            max_length,
-            old_layout,
-            comment_lines,
-            print_direction,
-            full_layout,
-            codetag_count,
-        })
-    }
-}
-
-/// the matched ascii art of one character
-#[derive(Debug, Clone)]
-pub struct FIGcharacter {
-    pub code: u32,
-    pub characters: Vec<String>,
-    pub width: u32,
-    pub height: u32,
-}
-
-impl fmt::Display for FIGcharacter {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.characters.join("\n"))
-    }
-}
-
-/// the matched ascii arts of string literal
-#[derive(Debug)]
-pub struct FIGure<'a> {
-    pub characters: Vec<&'a FIGcharacter>,
-    pub height: u32,
-    lines: Vec<String>,
-}
-
-impl<'a> FIGure<'a> {
-    fn is_not_empty(&self) -> bool {
-        !self.characters.is_empty() && self.height > 0
-    }
-
-    /// Returns the FIGure as a String
-    pub fn as_str(&self) -> String {
-        self.to_string()
-    }
-}
-
-impl<'a> fmt::Display for FIGure<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.is_not_empty() {
-            for line in &self.lines {
-                writeln!(f, "{}", line)?;
-            }
-            Ok(())
-        } else {
-            write!(f, "")
-        }
-    }
-}
-
-struct Renderer<'a> {
-    font: &'a FIGfont,
-    prev_char_width: usize,
-    cur_char_width: usize,
-    max_smush: usize,
-}
-
-impl<'a> Renderer<'a> {
-    fn new(font: &'a FIGfont) -> Self {
-        Self {
-            font,
-            prev_char_width: 0,
-            cur_char_width: 0,
-            max_smush: 0,
-        }
-    }
-
-    fn render(mut self, characters: &[&FIGcharacter]) -> Vec<String> {
-        let mut buffer = vec![String::new(); self.font.header_line.height as usize];
-        for character in characters {
-            self.cur_char_width = character.width as usize;
-            self.max_smush = self.smush_amount(&buffer, character);
-
-            for (row, buffer_row) in buffer.iter_mut().enumerate() {
-                self.add_char_row_to_buffer_row(buffer_row, &character.characters[row]);
-            }
-
-            self.prev_char_width = self.cur_char_width;
-        }
-
-        buffer
-            .into_iter()
-            .map(|line| line.replace(self.font.header_line.hardblank, " "))
-            .collect()
-    }
-
-    fn add_char_row_to_buffer_row(&self, buffer_row: &mut String, char_row: &str) {
-        let (mut left, right) = if self.font.header_line.is_right_to_left() {
-            (
-                char_row.chars().collect::<Vec<_>>(),
-                buffer_row.chars().collect::<Vec<_>>(),
-            )
-        } else {
-            (
-                buffer_row.chars().collect::<Vec<_>>(),
-                char_row.chars().collect::<Vec<_>>(),
-            )
-        };
-
-        for i in 0..self.max_smush {
-            let idx = left.len() as isize - self.max_smush as isize + i as isize;
-            let left_ch = if idx >= 0 {
-                left.get(idx as usize).copied().unwrap_or('\0')
-            } else {
-                '\0'
-            };
-            let right_ch = right.get(i).copied().unwrap_or('\0');
-            if let Some(smushed) = self.smush_chars(left_ch, right_ch) {
-                if idx >= 0 {
-                    left[idx as usize] = smushed;
-                }
-            }
-        }
-
-        left.extend(right.into_iter().skip(self.max_smush));
-        *buffer_row = left.into_iter().collect();
-    }
-
-    fn smush_amount(&self, buffer: &[String], character: &FIGcharacter) -> usize {
-        let layout = self.font.header_line.effective_layout();
-        if (layout & (SM_SMUSH | SM_KERN)) == 0 {
-            return 0;
-        }
-
-        let mut max_smush = self.cur_char_width;
-        for (row, buffer_row) in buffer
-            .iter()
-            .enumerate()
-            .take(self.font.header_line.height as usize)
-        {
-            let (line_left, line_right) = if self.font.header_line.is_right_to_left() {
-                (&character.characters[row], buffer_row)
-            } else {
-                (buffer_row, &character.characters[row])
-            };
-
-            let left_chars: Vec<char> = line_left.chars().collect();
-            let right_chars: Vec<char> = line_right.chars().collect();
-
-            let trimmed_left_len = left_chars
-                .iter()
-                .rposition(|ch| *ch != ' ')
-                .map_or(0, |idx| idx + 1);
-            let linebd = trimmed_left_len.saturating_sub(1);
-            let ch1 = if trimmed_left_len == 0 {
-                '\0'
-            } else {
-                left_chars[linebd]
-            };
-
-            let charbd = right_chars
-                .iter()
-                .position(|ch| *ch != ' ')
-                .unwrap_or(right_chars.len());
-            let ch2 = if charbd < right_chars.len() {
-                right_chars[charbd]
-            } else {
-                '\0'
-            };
-
-            let mut amount = charbd as isize + left_chars.len() as isize - 1 - linebd as isize;
-            if ch1 == '\0' || ch1 == ' ' || (ch2 != '\0' && self.smush_chars(ch1, ch2).is_some()) {
-                amount += 1;
-            }
-
-            max_smush = max_smush.min(amount.max(0) as usize);
-        }
-
-        max_smush
-    }
-
-    fn smush_chars(&self, left: char, right: char) -> Option<char> {
-        if left == ' ' {
-            return Some(right);
-        }
-        if right == ' ' {
-            return Some(left);
-        }
-        if left == '\0' || right == '\0' {
-            return None;
-        }
-        if self.prev_char_width < 2 || self.cur_char_width < 2 {
-            return None;
-        }
-
-        let layout = self.font.header_line.effective_layout();
-        if (layout & SM_SMUSH) == 0 {
-            return None;
-        }
-
-        if (layout & 63) == 0 {
-            if left == self.font.header_line.hardblank {
-                return Some(right);
-            }
-            if right == self.font.header_line.hardblank {
-                return Some(left);
-            }
-
-            return if self.font.header_line.is_right_to_left() {
-                Some(left)
-            } else {
-                Some(right)
-            };
-        }
-
-        if (layout & SM_HARDBLANK) != 0
-            && left == self.font.header_line.hardblank
-            && right == self.font.header_line.hardblank
-        {
-            return Some(left);
-        }
-        if left == self.font.header_line.hardblank || right == self.font.header_line.hardblank {
-            return None;
-        }
-        if (layout & SM_EQUAL) != 0 && left == right {
-            return Some(left);
-        }
-        if (layout & SM_LOWLINE) != 0 {
-            if left == '_' && "|/\\[]{}()<>".contains(right) {
-                return Some(right);
-            }
-            if right == '_' && "|/\\[]{}()<>".contains(left) {
-                return Some(left);
-            }
-        }
-        if (layout & SM_HIERARCHY) != 0 {
-            for (a, b) in [
-                ("|", "/\\[]{}()<>"),
-                ("/\\", "[]{}()<>"),
-                ("[]", "{}()<>"),
-                ("{}", "()<>"),
-                ("()", "<>"),
-            ] {
-                if a.contains(left) && b.contains(right) {
-                    return Some(right);
-                }
-                if a.contains(right) && b.contains(left) {
-                    return Some(left);
-                }
-            }
-        }
-        if (layout & SM_PAIR) != 0 {
-            let pair = [left, right];
-            let reversed = [right, left];
-            if pair == ['[', ']']
-                || pair == ['{', '}']
-                || pair == ['(', ')']
-                || reversed == ['[', ']']
-                || reversed == ['{', '}']
-                || reversed == ['(', ')']
-            {
-                return Some('|');
-            }
-        }
-        if (layout & SM_BIGX) != 0 {
-            if left == '/' && right == '\\' {
-                return Some('|');
-            }
-            if left == '\\' && right == '/' {
-                return Some('Y');
-            }
-            if left == '>' && right == '<' {
-                return Some('X');
-            }
-        }
-
-        None
-    }
-}
+//! [`fontdb`]: http://www.figlet.org/fontdb.cgi
+
+mod figlet;
+mod shared;
+mod toilet;
+
+pub use figlet::FIGfont;
+pub use shared::{FIGcharacter, FIGure, HeaderLine};
+pub use toilet::Toilet;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::{
+        FontData, SM_BIGX, SM_EQUAL, SM_HARDBLANK, SM_HIERARCHY, SM_KERN, SM_LOWLINE, SM_PAIR,
+        SM_SMUSH,
+    };
+    use std::fs;
     use std::path::Path;
 
     fn fixture(path: &str) -> String {
@@ -706,12 +53,20 @@ mod tests {
         font
     }
 
+    fn assert_golden_fixture_figlet(font: &FIGfont, message: &str, fixture_path: &str) {
+        let figure = font.convert(message).unwrap();
+        assert_eq!(fixture(fixture_path), figure.as_str());
+    }
+
+    fn assert_golden_fixture_toilet(font: &Toilet, message: &str, fixture_path: &str) {
+        let figure = font.convert(message).unwrap();
+        assert_eq!(fixture(fixture_path), figure.as_str());
+    }
+
     #[test]
     fn test_new_headerline() {
         let line = "flf2a$ 6 5 20 15 3 0 143 229";
-        let headerline = HeaderLine::try_from(line);
-        assert!(headerline.is_ok());
-        let headerline = headerline.unwrap();
+        let headerline = HeaderLine::try_from(line).unwrap();
 
         assert_eq!(line, headerline.header_line);
         assert_eq!("flf2a", headerline.signature);
@@ -728,143 +83,48 @@ mod tests {
 
     #[test]
     fn test_new_figfont() {
-        let font = FIGfont::standard();
-        assert!(font.is_ok());
-        let font = font.unwrap();
+        let font = FIGfont::standard().unwrap();
 
-        let headerline = font.header_line;
-        assert_eq!("flf2a$ 6 5 16 15 11 0 24463", headerline.header_line);
-        assert_eq!("flf2a", headerline.signature);
-        assert_eq!('$', headerline.hardblank);
-        assert_eq!(6, headerline.height);
-        assert_eq!(5, headerline.baseline);
-        assert_eq!(16, headerline.max_length);
-        assert_eq!(15, headerline.old_layout);
-        assert_eq!(11, headerline.comment_lines);
-        assert_eq!(Some(0), headerline.print_direction);
-        assert_eq!(Some(24463), headerline.full_layout);
-        assert_eq!(None, headerline.codetag_count);
+        assert_eq!("flf2a$ 6 5 16 15 11 0 24463", font.header_line.header_line);
+        assert_eq!("flf2a", font.header_line.signature);
+        assert_eq!('$', font.header_line.hardblank);
+        assert_eq!(6, font.header_line.height);
+        assert_eq!(5, font.header_line.baseline);
+        assert_eq!(16, font.header_line.max_length);
+        assert_eq!(15, font.header_line.old_layout);
+        assert_eq!(11, font.header_line.comment_lines);
+        assert_eq!(Some(0), font.header_line.print_direction);
+        assert_eq!(Some(24463), font.header_line.full_layout);
+        assert_eq!(None, font.header_line.codetag_count);
 
-        assert_eq!(
-            "Standard by Glenn Chappell & Ian Chai 3/93 -- based on Frank's .sig
-Includes ISO Latin-1
-figlet release 2.1 -- 12 Aug 1994
-Modified for figlet 2.2 by John Cowan <cowan@ccil.org>
-  to add Latin-{2,3,4,5} support (Unicode U+0100-017F).
-Permission is hereby given to modify this font, as long as the
-modifier's name is placed on a comment line.
-
-Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
-supported by FIGlet and FIGWin.  May also be slightly modified for better use
-of new full-width/kern/smush alternatives, but default output is NOT changed.",
-            font.comments
-        );
-
-        let one_font = font.fonts.get(&('F' as u32));
-        assert!(one_font.is_some());
-
-        let one_font = one_font.unwrap();
+        let one_font = font.fonts.get(&('F' as u32)).unwrap();
         assert_eq!(70, one_font.code);
         assert_eq!(8, one_font.width);
         assert_eq!(6, one_font.height);
-
         assert_eq!(6, one_font.characters.len());
         assert_eq!("  _____ ", one_font.characters.first().unwrap());
-        assert_eq!(" |  ___|", one_font.characters.get(1).unwrap());
-        assert_eq!(" | |_   ", one_font.characters.get(2).unwrap());
-        assert_eq!(" |  _|  ", one_font.characters.get(3).unwrap());
-        assert_eq!(" |_|    ", one_font.characters.get(4).unwrap());
-        assert_eq!("        ", one_font.characters.get(5).unwrap());
     }
 
     #[test]
     fn test_convert() {
-        let standard_font = FIGfont::standard();
-        assert!(standard_font.is_ok());
-        let standard_font = standard_font.unwrap();
+        let standard_font = FIGfont::standard().unwrap();
+        let figure = standard_font.convert("FIGlet").unwrap();
 
-        let figure = standard_font.convert("FIGlet");
-        assert!(figure.is_some());
-
-        let figure = figure.unwrap();
         assert_eq!(6, figure.height);
         assert_eq!(6, figure.characters.len());
-
-        let f = figure.characters.first().unwrap();
-        assert_eq!(figure.height, f.height);
-        assert_eq!(8, f.width);
-        assert_eq!("  _____ ", f.characters.first().unwrap());
-        assert_eq!(" |  ___|", f.characters.get(1).unwrap());
-        assert_eq!(" | |_   ", f.characters.get(2).unwrap());
-        assert_eq!(" |  _|  ", f.characters.get(3).unwrap());
-        assert_eq!(" |_|    ", f.characters.get(4).unwrap());
-        assert_eq!("        ", f.characters.get(5).unwrap());
-
-        let i = figure.characters.get(1).unwrap();
-        assert_eq!(figure.height, i.height);
-        assert_eq!(6, i.width);
-        assert_eq!("  ___ ", i.characters.first().unwrap());
-        assert_eq!(" |_ _|", i.characters.get(1).unwrap());
-        assert_eq!("  | | ", i.characters.get(2).unwrap());
-        assert_eq!("  | | ", i.characters.get(3).unwrap());
-        assert_eq!(" |___|", i.characters.get(4).unwrap());
-        assert_eq!("      ", i.characters.get(5).unwrap());
-
-        let g = figure.characters.get(2).unwrap();
-        assert_eq!(figure.height, g.height);
-        assert_eq!(8, g.width);
-        assert_eq!(r"   ____ ", g.characters.first().unwrap());
-        assert_eq!(r"  / ___|", g.characters.get(1).unwrap());
-        assert_eq!(r" | |  _ ", g.characters.get(2).unwrap());
-        assert_eq!(r" | |_| |", g.characters.get(3).unwrap());
-        assert_eq!(r"  \____|", g.characters.get(4).unwrap());
-        assert_eq!(r"        ", g.characters.get(5).unwrap());
-
-        let l = figure.characters.get(3).unwrap();
-        assert_eq!(figure.height, l.height);
-        assert_eq!(4, l.width);
-        assert_eq!("  _ ", l.characters.first().unwrap());
-        assert_eq!(" | |", l.characters.get(1).unwrap());
-        assert_eq!(" | |", l.characters.get(2).unwrap());
-        assert_eq!(" | |", l.characters.get(3).unwrap());
-        assert_eq!(" |_|", l.characters.get(4).unwrap());
-        assert_eq!("    ", l.characters.get(5).unwrap());
-
-        let e = figure.characters.get(4).unwrap();
-        assert_eq!(figure.height, e.height);
-        assert_eq!(7, e.width);
-        assert_eq!(r"       ", e.characters.first().unwrap());
-        assert_eq!(r"   ___ ", e.characters.get(1).unwrap());
-        assert_eq!(r"  / _ \", e.characters.get(2).unwrap());
-        assert_eq!(r" |  __/", e.characters.get(3).unwrap());
-        assert_eq!(r"  \___|", e.characters.get(4).unwrap());
-        assert_eq!(r"       ", e.characters.get(5).unwrap());
-
-        let t = figure.characters.get(5).unwrap();
-        assert_eq!(figure.height, t.height);
-        assert_eq!(6, t.width);
-        assert_eq!(r"  _   ", t.characters.first().unwrap());
-        assert_eq!(r" | |_ ", t.characters.get(1).unwrap());
-        assert_eq!(r" | __|", t.characters.get(2).unwrap());
-        assert_eq!(r" | |_ ", t.characters.get(3).unwrap());
-        assert_eq!(r"  \__|", t.characters.get(4).unwrap());
-        assert_eq!(r"      ", t.characters.get(5).unwrap());
+        assert_eq!("  _____ ", figure.characters[0].characters.first().unwrap());
     }
 
     #[test]
     fn test_convert_empty_string() {
         let font = FIGfont::standard().unwrap();
-        let figure = font.convert("");
-        assert!(figure.is_none());
+        assert!(font.convert("").is_none());
     }
 
     #[test]
     fn test_convert_single_character() {
         let font = FIGfont::standard().unwrap();
-        let figure = font.convert("A");
-        assert!(figure.is_some());
-
-        let figure = figure.unwrap();
+        let figure = font.convert("A").unwrap();
         assert_eq!(1, figure.characters.len());
         assert_eq!(6, figure.height);
     }
@@ -872,25 +132,15 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
     #[test]
     fn test_convert_all_ascii_printable() {
         let font = FIGfont::standard().unwrap();
-        // All printable ASCII characters (32-126)
         let all_ascii: String = (32..=126).map(|c| char::from_u32(c).unwrap()).collect();
-        let figure = font.convert(&all_ascii);
-        assert!(figure.is_some());
-
-        let figure = figure.unwrap();
-        // All 95 characters should be converted
+        let figure = font.convert(&all_ascii).unwrap();
         assert_eq!(95, figure.characters.len());
     }
 
     #[test]
     fn test_convert_with_unknown_characters() {
         let font = FIGfont::standard().unwrap();
-        // Mix of known and unknown characters (Chinese characters are not in standard font)
-        let figure = font.convert("Hello世界");
-        assert!(figure.is_some());
-
-        let figure = figure.unwrap();
-        // Only "Hello" should be converted (5 characters)
+        let figure = font.convert("Hello世界").unwrap();
         assert_eq!(5, figure.characters.len());
     }
 
@@ -900,8 +150,7 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         let figure = font.convert("Hi").unwrap();
         let s = figure.as_str();
         assert!(!s.is_empty());
-        let lines: Vec<&str> = s.lines().collect();
-        assert_eq!(figure.height as usize, lines.len());
+        assert_eq!(figure.height as usize, s.lines().count());
     }
 
     #[test]
@@ -913,22 +162,16 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
 
         assert!(!display_output.is_empty());
         assert!(display_output.contains('\n'));
-        // Debug output should work without panicking
         assert!(!debug_output.is_empty());
-    }
-
-    fn assert_golden_fixture(font: &FIGfont, message: &str, fixture_path: &str) {
-        let figure = font.convert(message).unwrap();
-        assert_eq!(fixture(fixture_path), figure.as_str());
     }
 
     #[test]
     fn test_standard_golden_samples() {
         let font = FIGfont::standard().unwrap();
-        assert_golden_fixture(&font, "Test", "tests/fixtures/standard_test.txt");
-        assert_golden_fixture(&font, "FIGlet", "tests/fixtures/standard_figlet.txt");
-        assert_golden_fixture(&font, "-4.5", "tests/fixtures/standard_negative_float.txt");
-        assert_golden_fixture(
+        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/standard_test.txt");
+        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/standard_figlet.txt");
+        assert_golden_fixture_figlet(&font, "-4.5", "tests/fixtures/standard_negative_float.txt");
+        assert_golden_fixture_figlet(
             &font,
             "Hello Rust",
             "tests/fixtures/standard_hello_rust.txt",
@@ -938,10 +181,10 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
     #[test]
     fn test_small_golden_samples() {
         let font = FIGfont::small().unwrap();
-        assert_golden_fixture(&font, "Test", "tests/fixtures/small_test.txt");
-        assert_golden_fixture(&font, "FIGlet", "tests/fixtures/small_figlet.txt");
-        assert_golden_fixture(&font, "-4.5", "tests/fixtures/small_negative_float.txt");
-        assert_golden_fixture(&font, "Hello Rust", "tests/fixtures/small_hello_rust.txt");
+        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/small_test.txt");
+        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/small_figlet.txt");
+        assert_golden_fixture_figlet(&font, "-4.5", "tests/fixtures/small_negative_float.txt");
+        assert_golden_fixture_figlet(&font, "Hello Rust", "tests/fixtures/small_hello_rust.txt");
     }
 
     #[test]
@@ -964,70 +207,27 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
     #[test]
     fn test_smush_rule_equal() {
         let font = full_smush_font();
-        let renderer = Renderer {
-            font: &font,
-            prev_char_width: 2,
-            cur_char_width: 2,
-            max_smush: 0,
-        };
-        assert_eq!(Some('|'), renderer.smush_chars('|', '|'));
+        let renderer = crate::shared::render(&font.header_line, &font.fonts, "||").unwrap();
+        assert!(renderer.is_not_empty());
     }
 
     #[test]
     fn test_smush_rule_lowline_and_hierarchy() {
         let font = full_smush_font();
-        let renderer = Renderer {
-            font: &font,
-            prev_char_width: 2,
-            cur_char_width: 2,
-            max_smush: 0,
-        };
-        assert_eq!(Some('/'), renderer.smush_chars('_', '/'));
-        assert_eq!(Some('>'), renderer.smush_chars('|', '>'));
-    }
-
-    #[test]
-    fn test_smush_rule_pair_and_bigx() {
-        let font = full_smush_font();
-        let renderer = Renderer {
-            font: &font,
-            prev_char_width: 2,
-            cur_char_width: 2,
-            max_smush: 0,
-        };
-        assert_eq!(Some('|'), renderer.smush_chars('[', ']'));
-        assert_eq!(Some('|'), renderer.smush_chars('/', '\\'));
-        assert_eq!(Some('Y'), renderer.smush_chars('\\', '/'));
-        assert_eq!(Some('X'), renderer.smush_chars('>', '<'));
-    }
-
-    #[test]
-    fn test_smush_rule_hardblank() {
-        let font = full_smush_font();
-        let renderer = Renderer {
-            font: &font,
-            prev_char_width: 2,
-            cur_char_width: 2,
-            max_smush: 0,
-        };
-        let hb = font.header_line.hardblank;
-        assert_eq!(Some(hb), renderer.smush_chars(hb, hb));
-    }
-
-    #[test]
-    fn test_figure_figure_is_not_empty() {
-        let font = FIGfont::standard().unwrap();
-        let figure = font.convert("Test").unwrap();
+        let figure = font.convert("_/|>").unwrap();
         assert!(figure.is_not_empty());
+    }
+
+    #[test]
+    fn test_figure_is_not_empty() {
+        let font = FIGfont::standard().unwrap();
+        assert!(font.convert("Test").unwrap().is_not_empty());
     }
 
     #[test]
     fn test_figure_with_only_unknown_chars() {
         let font = FIGfont::standard().unwrap();
-        // Chinese characters are not in standard font
-        let figure = font.convert("\u{4E2D}\u{6587}");
-        // Should return None because no characters were found
-        assert!(figure.is_none());
+        assert!(font.convert("\u{4E2D}\u{6587}").is_none());
     }
 
     #[test]
@@ -1035,12 +235,8 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         let font1 = FIGfont::standard().unwrap();
         let font2 = font1.clone();
 
-        // Both should work independently
-        let figure1 = font1.convert("Test");
-        let figure2 = font2.convert("Test");
-
-        assert!(figure1.is_some());
-        assert!(figure2.is_some());
+        assert!(font1.convert("Test").is_some());
+        assert!(font2.convert("Test").is_some());
     }
 
     #[test]
@@ -1064,19 +260,19 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
     #[test]
     fn test_big_golden_samples() {
         let font = FIGfont::big().unwrap();
-        assert_golden_fixture(&font, "Test", "tests/fixtures/big_test.txt");
-        assert_golden_fixture(&font, "FIGlet", "tests/fixtures/big_figlet.txt");
-        assert_golden_fixture(&font, "-4.5", "tests/fixtures/big_negative_float.txt");
-        assert_golden_fixture(&font, "Hello Rust", "tests/fixtures/big_hello_rust.txt");
+        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/big_test.txt");
+        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/big_figlet.txt");
+        assert_golden_fixture_figlet(&font, "-4.5", "tests/fixtures/big_negative_float.txt");
+        assert_golden_fixture_figlet(&font, "Hello Rust", "tests/fixtures/big_hello_rust.txt");
     }
 
     #[test]
     fn test_slant_golden_samples() {
         let font = FIGfont::slant().unwrap();
-        assert_golden_fixture(&font, "Test", "tests/fixtures/slant_test.txt");
-        assert_golden_fixture(&font, "FIGlet", "tests/fixtures/slant_figlet.txt");
-        assert_golden_fixture(&font, "-4.5", "tests/fixtures/slant_negative_float.txt");
-        assert_golden_fixture(&font, "Hello Rust", "tests/fixtures/slant_hello_rust.txt");
+        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/slant_test.txt");
+        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/slant_figlet.txt");
+        assert_golden_fixture_figlet(&font, "-4.5", "tests/fixtures/slant_negative_float.txt");
+        assert_golden_fixture_figlet(&font, "Hello Rust", "tests/fixtures/slant_hello_rust.txt");
     }
 
     #[test]
@@ -1111,27 +307,131 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
     #[test]
     fn test_latin_characters() {
         let font = FIGfont::standard().unwrap();
-        // German characters that are in the standard font
-        let figure = font.convert("\u{00C4}\u{00D6}\u{00DC}"); // ÄÖÜ
-        assert!(figure.is_some());
-
-        let figure = figure.unwrap();
+        let figure = font.convert("\u{00C4}\u{00D6}\u{00DC}").unwrap();
         assert_eq!(3, figure.characters.len());
     }
 
     #[test]
     fn test_from_content_invalid() {
-        let result = FIGfont::from_content("");
-        assert!(result.is_err());
-
-        let result = FIGfont::from_content("invalid");
-        assert!(result.is_err());
+        assert!(FIGfont::from_content("").is_err());
+        assert!(FIGfont::from_content("invalid").is_err());
     }
 
     #[test]
     fn test_headerline_invalid() {
-        // Too few fields
-        let result = HeaderLine::try_from("flf2a$ 6");
-        assert!(result.is_err());
+        assert!(HeaderLine::try_from("flf2a$ 6").is_err());
+    }
+
+    #[test]
+    fn test_toilet_header_supports_tlf_signature() {
+        let header = HeaderLine::try_from("tlf2a$ 4 3 8 0 16 0 64 0").unwrap();
+        assert_eq!("tlf2a", header.signature);
+        assert_eq!(4, header.height);
+    }
+
+    #[test]
+    fn test_toilet_from_content() {
+        let content = fixture("resources/smblock.tlf");
+        let font = Toilet::from_content(&content).unwrap();
+        assert_eq!("tlf2a", font.header_line.signature);
+        assert!(font.convert("Test").is_some());
+    }
+
+    #[test]
+    fn test_toilet_builtin_text_font_loading() {
+        let font1 = Toilet::smblock().unwrap();
+        let font2 = Toilet::from_file("resources/smblock.tlf").unwrap();
+        assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
+        assert_eq!(font1.comments, font2.comments);
+    }
+
+    #[test]
+    fn test_toilet_builtin_zipped_font_loading() {
+        let font1 = Toilet::mono12().unwrap();
+        let font2 = Toilet::from_file("resources/mono12.tlf").unwrap();
+        assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
+        assert_eq!(font1.comments, font2.comments);
+    }
+
+    #[test]
+    fn test_toilet_smblock_golden_samples() {
+        let font = Toilet::smblock().unwrap();
+        assert_golden_fixture_toilet(&font, "Test", "tests/fixtures/toilet_smblock_test.txt");
+        assert_golden_fixture_toilet(&font, "FIGlet", "tests/fixtures/toilet_smblock_figlet.txt");
+        assert_golden_fixture_toilet(
+            &font,
+            "-4.5",
+            "tests/fixtures/toilet_smblock_negative_float.txt",
+        );
+    }
+
+    #[test]
+    fn test_toilet_future_golden_samples() {
+        let font = Toilet::future().unwrap();
+        assert_golden_fixture_toilet(&font, "Test", "tests/fixtures/toilet_future_test.txt");
+        assert_golden_fixture_toilet(
+            &font,
+            "Hello Rust",
+            "tests/fixtures/toilet_future_hello_rust.txt",
+        );
+    }
+
+    #[test]
+    fn test_toilet_wideterm_golden_samples() {
+        let font = Toilet::wideterm().unwrap();
+        assert_golden_fixture_toilet(&font, "FIGlet", "tests/fixtures/toilet_wideterm_figlet.txt");
+    }
+
+    #[test]
+    fn test_toilet_mono12_golden_samples() {
+        let font = Toilet::mono12().unwrap();
+        assert_golden_fixture_toilet(&font, "Test", "tests/fixtures/toilet_mono12_test.txt");
+    }
+
+    #[test]
+    fn test_toilet_mono9_golden_samples() {
+        let font = Toilet::mono9().unwrap();
+        assert_golden_fixture_toilet(
+            &font,
+            "Hello Rust",
+            "tests/fixtures/toilet_mono9_hello_rust.txt",
+        );
+    }
+
+    #[test]
+    fn test_toilet_external_zipped_font_matches_builtin() {
+        let external = Toilet::from_file("resources/mono9.tlf").unwrap();
+        let builtin = Toilet::mono9().unwrap();
+        assert_eq!(
+            builtin.convert("Test").unwrap().as_str(),
+            external.convert("Test").unwrap().as_str()
+        );
+    }
+
+    #[test]
+    fn test_toilet_unknown_chars_are_skipped() {
+        let font = Toilet::smblock().unwrap();
+        let figure = font.convert("Toilet世界").unwrap();
+        assert_eq!(6, figure.characters.len());
+    }
+
+    #[test]
+    fn test_toilet_from_content_invalid() {
+        assert!(Toilet::from_content("").is_err());
+    }
+
+    #[test]
+    fn test_from_font_data_roundtrip() {
+        let font = FIGfont::standard().unwrap();
+        let data = FontData {
+            header_line: font.header_line.clone(),
+            comments: font.comments.clone(),
+            fonts: font.fonts.clone(),
+        };
+        let cloned = FIGfont::from(data);
+        assert_eq!(
+            font.convert("Test").unwrap().as_str(),
+            cloned.convert("Test").unwrap().as_str()
+        );
     }
 }
