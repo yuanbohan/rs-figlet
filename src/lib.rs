@@ -24,14 +24,23 @@
 //! [`small.flf`]: http://www.figlet.org/fonts/small.flf
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use std::{fmt, fs};
 
+/// Cached standard font - parsed once and reused
+static STANDARD_FONT: LazyLock<Result<FIGfont, String>> = LazyLock::new(|| {
+    let contents = std::include_str!("standard.flf");
+    FIGfont::from_content(contents)
+});
+
 /// FIGlet font, which will hold the mapping from u32 code to FIGcharacter
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FIGfont {
     pub header_line: HeaderLine,
     pub comments: String,
     pub fonts: HashMap<u32, FIGcharacter>,
+    /// ASCII character codes (32-126) stored in array for fast lookup
+    ascii_codes: [Option<u32>; 95],
 }
 
 impl FIGfont {
@@ -81,7 +90,7 @@ impl FIGfont {
     ) -> Result<FIGcharacter, String> {
         let mut characters = vec![];
         for i in 0..height {
-            let index = start_index + i as usize;
+            let index = start_index + i;
             let is_last_index = i == height - 1;
             let one_line_character =
                 FIGfont::extract_one_line(lines, index, height, hardblank, is_last_index)?;
@@ -170,7 +179,7 @@ impl FIGfont {
         let codetag_height = (headerline.height + 1) as usize;
         let codetag_lines = lines.len() - offset;
 
-        if codetag_lines % codetag_height != 0 {
+        if !codetag_lines.is_multiple_of(codetag_height) {
             return Err("codetag font is illegal.".to_string());
         }
 
@@ -218,10 +227,20 @@ impl FIGfont {
         let comments = FIGfont::read_comments(&lines, header_line.comment_lines)?;
         let fonts = FIGfont::read_fonts(&lines, &header_line)?;
 
+        // Populate ASCII codes array for fast lookup
+        let mut ascii_codes: [Option<u32>; 95] = [None; 95];
+        for (i, slot) in ascii_codes.iter_mut().enumerate() {
+            let code = (i + 32) as u32;
+            if fonts.contains_key(&code) {
+                *slot = Some(code);
+            }
+        }
+
         Ok(FIGfont {
             header_line,
             comments,
             fonts,
+            ascii_codes,
         })
     }
 
@@ -233,14 +252,15 @@ impl FIGfont {
 
     /// the standard FIGlet font, which you can find [`fontdb`]
     ///
+    /// This method is cached - the font is parsed once and reused.
+    ///
     /// [`fontdb`]: http://www.figlet.org/fontdb.cgi
     pub fn standard() -> Result<FIGfont, String> {
-        let contents = std::include_str!("standard.flf");
-        FIGfont::from_content(contents)
+        STANDARD_FONT.clone()
     }
 
     /// convert string literal to FIGure
-    pub fn convert(&self, message: &str) -> Option<FIGure> {
+    pub fn convert(&self, message: &str) -> Option<FIGure<'_>> {
         if message.is_empty() {
             return None;
         }
@@ -248,8 +268,18 @@ impl FIGfont {
         let mut characters: Vec<&FIGcharacter> = vec![];
         for ch in message.chars() {
             let code = ch as u32;
-            if let Some(character) = self.fonts.get(&code) {
-                characters.push(character);
+            // Fast path: check ASCII range (32-126) first using array lookup
+            let character = if (32..=126).contains(&code) {
+                if let Some(ascii_code) = self.ascii_codes[(code - 32) as usize] {
+                    self.fonts.get(&ascii_code)
+                } else {
+                    None
+                }
+            } else {
+                self.fonts.get(&code)
+            };
+            if let Some(char) = character {
+                characters.push(char);
             }
         }
 
@@ -267,7 +297,7 @@ impl FIGfont {
 /// the first line in FIGlet font, which you can find the documentation [`headerline`]
 ///
 /// [`headerline`]: http://www.jave.de/figlet/figfont.html#headerline
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HeaderLine {
     pub header_line: String,
 
@@ -366,7 +396,7 @@ impl TryFrom<&str> for HeaderLine {
 }
 
 /// the matched ascii art of one character
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FIGcharacter {
     pub code: u32,
     pub characters: Vec<String>,
@@ -391,22 +421,25 @@ impl<'a> FIGure<'a> {
     fn is_not_empty(&self) -> bool {
         !self.characters.is_empty() && self.height > 0
     }
+
+    /// Returns the FIGure as a String
+    pub fn as_str(&self) -> String {
+        self.to_string()
+    }
 }
 
 impl<'a> fmt::Display for FIGure<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.is_not_empty() {
-            let mut rs: Vec<&'a str> = vec![];
             for i in 0..self.height {
                 for character in &self.characters {
                     if let Some(line) = character.characters.get(i as usize) {
-                        rs.push(line);
+                        write!(f, "{}", line)?;
                     }
                 }
-                rs.push("\n");
+                writeln!(f)?;
             }
-
-            write!(f, "{}", rs.join(""))
+            Ok(())
         } else {
             write!(f, "")
         }
@@ -560,5 +593,151 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         assert_eq!(r" | |_ ", t.characters.get(3).unwrap());
         assert_eq!(r"  \__|", t.characters.get(4).unwrap());
         assert_eq!(r"      ", t.characters.get(5).unwrap());
+    }
+
+    #[test]
+    fn test_convert_empty_string() {
+        let font = FIGfont::standard().unwrap();
+        let figure = font.convert("");
+        assert!(figure.is_none());
+    }
+
+    #[test]
+    fn test_convert_single_character() {
+        let font = FIGfont::standard().unwrap();
+        let figure = font.convert("A");
+        assert!(figure.is_some());
+
+        let figure = figure.unwrap();
+        assert_eq!(1, figure.characters.len());
+        assert_eq!(6, figure.height);
+    }
+
+    #[test]
+    fn test_convert_all_ascii_printable() {
+        let font = FIGfont::standard().unwrap();
+        // All printable ASCII characters (32-126)
+        let all_ascii: String = (32..=126).map(|c| char::from_u32(c).unwrap()).collect();
+        let figure = font.convert(&all_ascii);
+        assert!(figure.is_some());
+
+        let figure = figure.unwrap();
+        // All 95 characters should be converted
+        assert_eq!(95, figure.characters.len());
+    }
+
+    #[test]
+    fn test_convert_with_unknown_characters() {
+        let font = FIGfont::standard().unwrap();
+        // Mix of known and unknown characters (Chinese characters are not in standard font)
+        let figure = font.convert("Hello世界");
+        assert!(figure.is_some());
+
+        let figure = figure.unwrap();
+        // Only "Hello" should be converted (5 characters)
+        assert_eq!(5, figure.characters.len());
+    }
+
+    #[test]
+    fn test_figure_as_str() {
+        let font = FIGfont::standard().unwrap();
+        let figure = font.convert("Hi").unwrap();
+        let s = figure.as_str();
+        assert!(!s.is_empty());
+        // The ASCII art output doesn't contain literal "Hi" text
+        // but it should have multiple lines (one per height)
+        let lines: Vec<&str> = s.lines().collect();
+        assert!(lines.len() > 1);
+    }
+
+    #[test]
+    fn test_figure_display() {
+        let font = FIGfont::standard().unwrap();
+        let figure = font.convert("AB").unwrap();
+        let display_output = format!("{}", figure);
+        let debug_output = format!("{:?}", figure);
+
+        assert!(!display_output.is_empty());
+        assert!(display_output.contains('\n'));
+        // Debug output should work without panicking
+        assert!(!debug_output.is_empty());
+    }
+
+    #[test]
+    fn test_figure_figure_is_not_empty() {
+        let font = FIGfont::standard().unwrap();
+        let figure = font.convert("Test").unwrap();
+        assert!(figure.is_not_empty());
+    }
+
+    #[test]
+    fn test_figure_with_only_unknown_chars() {
+        let font = FIGfont::standard().unwrap();
+        // Chinese characters are not in standard font
+        let figure = font.convert("\u{4E2D}\u{6587}");
+        // Should return None because no characters were found
+        assert!(figure.is_none());
+    }
+
+    #[test]
+    fn test_figfont_clone() {
+        let font1 = FIGfont::standard().unwrap();
+        let font2 = font1.clone();
+
+        // Both should work independently
+        let figure1 = font1.convert("Test");
+        let figure2 = font2.convert("Test");
+
+        assert!(figure1.is_some());
+        assert!(figure2.is_some());
+    }
+
+    #[test]
+    fn test_standard_font_caching() {
+        // Call standard() multiple times - should return cached result
+        let font1 = FIGfont::standard().unwrap();
+        let font2 = FIGfont::standard().unwrap();
+
+        // Both should have the same content
+        assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
+        assert_eq!(font1.comments, font2.comments);
+    }
+
+    #[test]
+    fn test_figure_character_width_and_height() {
+        let font = FIGfont::standard().unwrap();
+        let figure = font.convert("ABC").unwrap();
+
+        for char in &figure.characters {
+            assert_eq!(figure.height, char.height);
+            assert!(char.width > 0);
+        }
+    }
+
+    #[test]
+    fn test_latin_characters() {
+        let font = FIGfont::standard().unwrap();
+        // German characters that are in the standard font
+        let figure = font.convert("\u{00C4}\u{00D6}\u{00DC}"); // ÄÖÜ
+        assert!(figure.is_some());
+
+        let figure = figure.unwrap();
+        assert_eq!(3, figure.characters.len());
+    }
+
+    #[test]
+    fn test_from_content_invalid() {
+        let result = FIGfont::from_content("");
+        assert!(result.is_err());
+
+        let result = FIGfont::from_content("invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_headerline_invalid() {
+        // Too few fields
+        let result = HeaderLine::try_from("flf2a$ 6");
+        assert!(result.is_err());
     }
 }
