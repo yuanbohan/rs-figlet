@@ -24,14 +24,7 @@
 //! [`small.flf`]: http://www.figlet.org/fonts/small.flf
 
 use std::collections::HashMap;
-use std::sync::LazyLock;
 use std::{fmt, fs};
-
-/// Cached standard font - parsed once and reused
-static STANDARD_FONT: LazyLock<Result<FIGfont, String>> = LazyLock::new(|| {
-    let contents = std::include_str!("standard.flf");
-    FIGfont::from_content(contents)
-});
 
 /// FIGlet font, which will hold the mapping from u32 code to FIGcharacter
 #[derive(Debug, Clone)]
@@ -39,8 +32,6 @@ pub struct FIGfont {
     pub header_line: HeaderLine,
     pub comments: String,
     pub fonts: HashMap<u32, FIGcharacter>,
-    /// ASCII character codes (32-126) stored in array for fast lookup
-    ascii_codes: [Option<u32>; 95],
 }
 
 impl FIGfont {
@@ -179,7 +170,7 @@ impl FIGfont {
         let codetag_height = (headerline.height + 1) as usize;
         let codetag_lines = lines.len() - offset;
 
-        if !codetag_lines.is_multiple_of(codetag_height) {
+        if codetag_lines % codetag_height != 0 {
             return Err("codetag font is illegal.".to_string());
         }
 
@@ -227,20 +218,10 @@ impl FIGfont {
         let comments = FIGfont::read_comments(&lines, header_line.comment_lines)?;
         let fonts = FIGfont::read_fonts(&lines, &header_line)?;
 
-        // Populate ASCII codes array for fast lookup
-        let mut ascii_codes: [Option<u32>; 95] = [None; 95];
-        for (i, slot) in ascii_codes.iter_mut().enumerate() {
-            let code = (i + 32) as u32;
-            if fonts.contains_key(&code) {
-                *slot = Some(code);
-            }
-        }
-
         Ok(FIGfont {
             header_line,
             comments,
             fonts,
-            ascii_codes,
         })
     }
 
@@ -252,11 +233,10 @@ impl FIGfont {
 
     /// the standard FIGlet font, which you can find [`fontdb`]
     ///
-    /// This method is cached - the font is parsed once and reused.
-    ///
     /// [`fontdb`]: http://www.figlet.org/fontdb.cgi
     pub fn standard() -> Result<FIGfont, String> {
-        STANDARD_FONT.clone()
+        let contents = std::include_str!("standard.flf");
+        FIGfont::from_content(contents)
     }
 
     /// convert string literal to FIGure
@@ -268,18 +248,8 @@ impl FIGfont {
         let mut characters: Vec<&FIGcharacter> = vec![];
         for ch in message.chars() {
             let code = ch as u32;
-            // Fast path: check ASCII range (32-126) first using array lookup
-            let character = if (32..=126).contains(&code) {
-                if let Some(ascii_code) = self.ascii_codes[(code - 32) as usize] {
-                    self.fonts.get(&ascii_code)
-                } else {
-                    None
-                }
-            } else {
-                self.fonts.get(&code)
-            };
-            if let Some(char) = character {
-                characters.push(char);
+            if let Some(character) = self.fonts.get(&code) {
+                characters.push(character);
             }
         }
 
@@ -693,12 +663,10 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
     }
 
     #[test]
-    fn test_standard_font_caching() {
-        // Call standard() multiple times - should return cached result
+    fn test_standard_font_loading() {
         let font1 = FIGfont::standard().unwrap();
         let font2 = FIGfont::standard().unwrap();
 
-        // Both should have the same content
         assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
         assert_eq!(font1.comments, font2.comments);
     }

@@ -1,9 +1,10 @@
 [package]
 name = "figlet-rs"
-version = "0.1.5"
+version = "0.2.0"
 authors = ["yuanbohan <yuanbo.han@gmail.com>"]
 license = "Apache-2.0"
 edition = "2021"
+rust-version = "1.56"
 readme = "README.md"
 homepage = "https://github.com/yuanbohan/rs-figlet"
 repository = "https://github.com/yuanbohan/rs-figlet"
