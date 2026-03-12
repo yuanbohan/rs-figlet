@@ -464,8 +464,8 @@ impl<'a> Renderer<'a> {
             self.cur_char_width = character.width as usize;
             self.max_smush = self.smush_amount(&buffer, character);
 
-            for row in 0..buffer.len() {
-                self.add_char_row_to_buffer_row(&mut buffer[row], &character.characters[row]);
+            for (row, buffer_row) in buffer.iter_mut().enumerate() {
+                self.add_char_row_to_buffer_row(buffer_row, &character.characters[row]);
             }
 
             self.prev_char_width = self.cur_char_width;
@@ -516,11 +516,15 @@ impl<'a> Renderer<'a> {
         }
 
         let mut max_smush = self.cur_char_width;
-        for row in 0..self.font.header_line.height as usize {
+        for (row, buffer_row) in buffer
+            .iter()
+            .enumerate()
+            .take(self.font.header_line.height as usize)
+        {
             let (line_left, line_right) = if self.font.header_line.is_right_to_left() {
-                (&character.characters[row], &buffer[row])
+                (&character.characters[row], buffer_row)
             } else {
-                (&buffer[row], &character.characters[row])
+                (buffer_row, &character.characters[row])
             };
 
             let left_chars: Vec<char> = line_left.chars().collect();
@@ -548,9 +552,7 @@ impl<'a> Renderer<'a> {
             };
 
             let mut amount = charbd as isize + left_chars.len() as isize - 1 - linebd as isize;
-            if ch1 == '\0' || ch1 == ' ' {
-                amount += 1;
-            } else if ch2 != '\0' && self.smush_chars(ch1, ch2).is_some() {
+            if ch1 == '\0' || ch1 == ' ' || (ch2 != '\0' && self.smush_chars(ch1, ch2).is_some()) {
                 amount += 1;
             }
 
