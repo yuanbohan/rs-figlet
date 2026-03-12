@@ -3,8 +3,6 @@
 //!
 //! # Examples
 //!
-//! download [`small.flf`] and place it to the `resources` folder.
-//!
 //! convert string literal using standard or specified font:
 //!
 //! ```
@@ -14,7 +12,7 @@
 //! let figure = standard_font.convert("FIGlet");
 //! assert!(figure.is_some());
 //!
-//! let small_font = FIGfont::from_file("resources/small.flf").unwrap();
+//! let small_font = FIGfont::small().unwrap();
 //! let figure = small_font.convert("FIGlet");
 //! assert!(figure.is_some());
 //! ```
@@ -25,6 +23,15 @@
 
 use std::collections::HashMap;
 use std::{fmt, fs};
+
+const SM_EQUAL: i32 = 1;
+const SM_LOWLINE: i32 = 2;
+const SM_HIERARCHY: i32 = 4;
+const SM_PAIR: i32 = 8;
+const SM_BIGX: i32 = 16;
+const SM_HARDBLANK: i32 = 32;
+const SM_KERN: i32 = 64;
+const SM_SMUSH: i32 = 128;
 
 /// FIGlet font, which will hold the mapping from u32 code to FIGcharacter
 #[derive(Debug, Clone)]
@@ -57,7 +64,7 @@ impl FIGfont {
         lines: &[&str],
         index: usize,
         height: usize,
-        hardblank: char,
+        _hardblank: char,
         is_last_index: bool,
     ) -> Result<String, String> {
         let line = lines
@@ -69,7 +76,7 @@ impl FIGfont {
             width -= 1;
         }
 
-        Ok(line[..width].replace(hardblank, " "))
+        Ok(line[..width].to_string())
     }
 
     fn extract_one_font(
@@ -87,7 +94,7 @@ impl FIGfont {
                 FIGfont::extract_one_line(lines, index, height, hardblank, is_last_index)?;
             characters.push(one_line_character);
         }
-        let width = characters[0].len() as u32;
+        let width = characters[0].chars().count() as u32;
         let height = height as u32;
 
         Ok(FIGcharacter {
@@ -239,6 +246,12 @@ impl FIGfont {
         FIGfont::from_content(contents)
     }
 
+    /// the small FIGlet font bundled with the crate
+    pub fn small() -> Result<FIGfont, String> {
+        let contents = std::include_str!("../resources/small.flf");
+        FIGfont::from_content(contents)
+    }
+
     /// convert string literal to FIGure
     pub fn convert(&self, message: &str) -> Option<FIGure<'_>> {
         if message.is_empty() {
@@ -257,9 +270,12 @@ impl FIGfont {
             return None;
         }
 
+        let rendered_lines = Renderer::new(self).render(&characters);
+
         Some(FIGure {
             characters,
             height: self.header_line.height as u32,
+            lines: rendered_lines,
         })
     }
 }
@@ -324,6 +340,19 @@ impl HeaderLine {
             None
         }
     }
+
+    fn effective_layout(&self) -> i32 {
+        match self.full_layout {
+            Some(layout) => layout,
+            None if self.old_layout == 0 => SM_KERN,
+            None if self.old_layout < 0 => 0,
+            None => (self.old_layout & 31) | SM_SMUSH,
+        }
+    }
+
+    fn is_right_to_left(&self) -> bool {
+        self.print_direction == Some(1)
+    }
 }
 
 impl TryFrom<&str> for HeaderLine {
@@ -385,6 +414,7 @@ impl fmt::Display for FIGcharacter {
 pub struct FIGure<'a> {
     pub characters: Vec<&'a FIGcharacter>,
     pub height: u32,
+    lines: Vec<String>,
 }
 
 impl<'a> FIGure<'a> {
@@ -401,13 +431,8 @@ impl<'a> FIGure<'a> {
 impl<'a> fmt::Display for FIGure<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.is_not_empty() {
-            for i in 0..self.height {
-                for character in &self.characters {
-                    if let Some(line) = character.characters.get(i as usize) {
-                        write!(f, "{}", line)?;
-                    }
-                }
-                writeln!(f)?;
+            for line in &self.lines {
+                writeln!(f, "{}", line)?;
             }
             Ok(())
         } else {
@@ -416,9 +441,241 @@ impl<'a> fmt::Display for FIGure<'a> {
     }
 }
 
+struct Renderer<'a> {
+    font: &'a FIGfont,
+    prev_char_width: usize,
+    cur_char_width: usize,
+    max_smush: usize,
+}
+
+impl<'a> Renderer<'a> {
+    fn new(font: &'a FIGfont) -> Self {
+        Self {
+            font,
+            prev_char_width: 0,
+            cur_char_width: 0,
+            max_smush: 0,
+        }
+    }
+
+    fn render(mut self, characters: &[&FIGcharacter]) -> Vec<String> {
+        let mut buffer = vec![String::new(); self.font.header_line.height as usize];
+        for character in characters {
+            self.cur_char_width = character.width as usize;
+            self.max_smush = self.smush_amount(&buffer, character);
+
+            for row in 0..buffer.len() {
+                self.add_char_row_to_buffer_row(&mut buffer[row], &character.characters[row]);
+            }
+
+            self.prev_char_width = self.cur_char_width;
+        }
+
+        buffer
+            .into_iter()
+            .map(|line| line.replace(self.font.header_line.hardblank, " "))
+            .collect()
+    }
+
+    fn add_char_row_to_buffer_row(&self, buffer_row: &mut String, char_row: &str) {
+        let (mut left, right) = if self.font.header_line.is_right_to_left() {
+            (
+                char_row.chars().collect::<Vec<_>>(),
+                buffer_row.chars().collect::<Vec<_>>(),
+            )
+        } else {
+            (
+                buffer_row.chars().collect::<Vec<_>>(),
+                char_row.chars().collect::<Vec<_>>(),
+            )
+        };
+
+        for i in 0..self.max_smush {
+            let idx = left.len() as isize - self.max_smush as isize + i as isize;
+            let left_ch = if idx >= 0 {
+                left.get(idx as usize).copied().unwrap_or('\0')
+            } else {
+                '\0'
+            };
+            let right_ch = right.get(i).copied().unwrap_or('\0');
+            if let Some(smushed) = self.smush_chars(left_ch, right_ch) {
+                if idx >= 0 {
+                    left[idx as usize] = smushed;
+                }
+            }
+        }
+
+        left.extend(right.into_iter().skip(self.max_smush));
+        *buffer_row = left.into_iter().collect();
+    }
+
+    fn smush_amount(&self, buffer: &[String], character: &FIGcharacter) -> usize {
+        let layout = self.font.header_line.effective_layout();
+        if (layout & (SM_SMUSH | SM_KERN)) == 0 {
+            return 0;
+        }
+
+        let mut max_smush = self.cur_char_width;
+        for row in 0..self.font.header_line.height as usize {
+            let (line_left, line_right) = if self.font.header_line.is_right_to_left() {
+                (&character.characters[row], &buffer[row])
+            } else {
+                (&buffer[row], &character.characters[row])
+            };
+
+            let left_chars: Vec<char> = line_left.chars().collect();
+            let right_chars: Vec<char> = line_right.chars().collect();
+
+            let trimmed_left_len = left_chars
+                .iter()
+                .rposition(|ch| *ch != ' ')
+                .map_or(0, |idx| idx + 1);
+            let linebd = trimmed_left_len.saturating_sub(1);
+            let ch1 = if trimmed_left_len == 0 {
+                '\0'
+            } else {
+                left_chars[linebd]
+            };
+
+            let charbd = right_chars
+                .iter()
+                .position(|ch| *ch != ' ')
+                .unwrap_or(right_chars.len());
+            let ch2 = if charbd < right_chars.len() {
+                right_chars[charbd]
+            } else {
+                '\0'
+            };
+
+            let mut amount = charbd as isize + left_chars.len() as isize - 1 - linebd as isize;
+            if ch1 == '\0' || ch1 == ' ' {
+                amount += 1;
+            } else if ch2 != '\0' && self.smush_chars(ch1, ch2).is_some() {
+                amount += 1;
+            }
+
+            max_smush = max_smush.min(amount.max(0) as usize);
+        }
+
+        max_smush
+    }
+
+    fn smush_chars(&self, left: char, right: char) -> Option<char> {
+        if left == ' ' {
+            return Some(right);
+        }
+        if right == ' ' {
+            return Some(left);
+        }
+        if left == '\0' || right == '\0' {
+            return None;
+        }
+        if self.prev_char_width < 2 || self.cur_char_width < 2 {
+            return None;
+        }
+
+        let layout = self.font.header_line.effective_layout();
+        if (layout & SM_SMUSH) == 0 {
+            return None;
+        }
+
+        if (layout & 63) == 0 {
+            if left == self.font.header_line.hardblank {
+                return Some(right);
+            }
+            if right == self.font.header_line.hardblank {
+                return Some(left);
+            }
+
+            return if self.font.header_line.is_right_to_left() {
+                Some(left)
+            } else {
+                Some(right)
+            };
+        }
+
+        if (layout & SM_HARDBLANK) != 0
+            && left == self.font.header_line.hardblank
+            && right == self.font.header_line.hardblank
+        {
+            return Some(left);
+        }
+        if left == self.font.header_line.hardblank || right == self.font.header_line.hardblank {
+            return None;
+        }
+        if (layout & SM_EQUAL) != 0 && left == right {
+            return Some(left);
+        }
+        if (layout & SM_LOWLINE) != 0 {
+            if left == '_' && "|/\\[]{}()<>".contains(right) {
+                return Some(right);
+            }
+            if right == '_' && "|/\\[]{}()<>".contains(left) {
+                return Some(left);
+            }
+        }
+        if (layout & SM_HIERARCHY) != 0 {
+            for (a, b) in [
+                ("|", "/\\[]{}()<>"),
+                ("/\\", "[]{}()<>"),
+                ("[]", "{}()<>"),
+                ("{}", "()<>"),
+                ("()", "<>"),
+            ] {
+                if a.contains(left) && b.contains(right) {
+                    return Some(right);
+                }
+                if a.contains(right) && b.contains(left) {
+                    return Some(left);
+                }
+            }
+        }
+        if (layout & SM_PAIR) != 0 {
+            let pair = [left, right];
+            let reversed = [right, left];
+            if pair == ['[', ']']
+                || pair == ['{', '}']
+                || pair == ['(', ')']
+                || reversed == ['[', ']']
+                || reversed == ['{', '}']
+                || reversed == ['(', ')']
+            {
+                return Some('|');
+            }
+        }
+        if (layout & SM_BIGX) != 0 {
+            if left == '/' && right == '\\' {
+                return Some('|');
+            }
+            if left == '\\' && right == '/' {
+                return Some('Y');
+            }
+            if left == '>' && right == '<' {
+                return Some('X');
+            }
+        }
+
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+
+    fn fixture(path: &str) -> String {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        fs::read_to_string(root.join(path)).unwrap()
+    }
+
+    fn full_smush_font() -> FIGfont {
+        let mut font = FIGfont::standard().unwrap();
+        font.header_line.full_layout = Some(
+            SM_EQUAL | SM_LOWLINE | SM_HIERARCHY | SM_PAIR | SM_BIGX | SM_HARDBLANK | SM_SMUSH,
+        );
+        font
+    }
 
     #[test]
     fn test_new_headerline() {
@@ -614,10 +871,8 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         let figure = font.convert("Hi").unwrap();
         let s = figure.as_str();
         assert!(!s.is_empty());
-        // The ASCII art output doesn't contain literal "Hi" text
-        // but it should have multiple lines (one per height)
         let lines: Vec<&str> = s.lines().collect();
-        assert!(lines.len() > 1);
+        assert_eq!(figure.height as usize, lines.len());
     }
 
     #[test]
@@ -631,6 +886,120 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         assert!(display_output.contains('\n'));
         // Debug output should work without panicking
         assert!(!debug_output.is_empty());
+    }
+
+    #[test]
+    fn test_standard_golden_test() {
+        let font = FIGfont::standard().unwrap();
+        let figure = font.convert("Test").unwrap();
+        assert_eq!(fixture("tests/fixtures/standard_test.txt"), figure.as_str());
+    }
+
+    #[test]
+    fn test_standard_golden_figlet() {
+        let font = FIGfont::standard().unwrap();
+        let figure = font.convert("FIGlet").unwrap();
+        assert_eq!(
+            fixture("tests/fixtures/standard_figlet.txt"),
+            figure.as_str()
+        );
+    }
+
+    #[test]
+    fn test_standard_golden_negative_float() {
+        let font = FIGfont::standard().unwrap();
+        let figure = font.convert("-4.5").unwrap();
+        assert_eq!(
+            fixture("tests/fixtures/standard_negative_float.txt"),
+            figure.as_str()
+        );
+    }
+
+    #[test]
+    fn test_small_golden_test() {
+        let font = FIGfont::from_file("resources/small.flf").unwrap();
+        let figure = font.convert("Test").unwrap();
+        assert_eq!(fixture("tests/fixtures/small_test.txt"), figure.as_str());
+    }
+
+    #[test]
+    fn test_small_golden_negative_float() {
+        let font = FIGfont::from_file("resources/small.flf").unwrap();
+        let figure = font.convert("-4.5").unwrap();
+        assert_eq!(
+            fixture("tests/fixtures/small_negative_float.txt"),
+            figure.as_str()
+        );
+    }
+
+    #[test]
+    fn test_effective_layout_prefers_full_layout() {
+        let header = HeaderLine::try_from("flf2a$ 6 5 20 15 3 0 143 229").unwrap();
+        assert_eq!(143, header.effective_layout());
+    }
+
+    #[test]
+    fn test_effective_layout_uses_old_layout_compatibility() {
+        let kerning = HeaderLine::try_from("flf2a$ 6 5 20 0 3").unwrap();
+        let full_width = HeaderLine::try_from("flf2a$ 6 5 20 -1 3").unwrap();
+        let smushing = HeaderLine::try_from("flf2a$ 6 5 20 15 3").unwrap();
+
+        assert_eq!(SM_KERN, kerning.effective_layout());
+        assert_eq!(0, full_width.effective_layout());
+        assert_eq!(143, smushing.effective_layout());
+    }
+
+    #[test]
+    fn test_smush_rule_equal() {
+        let font = full_smush_font();
+        let renderer = Renderer {
+            font: &font,
+            prev_char_width: 2,
+            cur_char_width: 2,
+            max_smush: 0,
+        };
+        assert_eq!(Some('|'), renderer.smush_chars('|', '|'));
+    }
+
+    #[test]
+    fn test_smush_rule_lowline_and_hierarchy() {
+        let font = full_smush_font();
+        let renderer = Renderer {
+            font: &font,
+            prev_char_width: 2,
+            cur_char_width: 2,
+            max_smush: 0,
+        };
+        assert_eq!(Some('/'), renderer.smush_chars('_', '/'));
+        assert_eq!(Some('>'), renderer.smush_chars('|', '>'));
+    }
+
+    #[test]
+    fn test_smush_rule_pair_and_bigx() {
+        let font = full_smush_font();
+        let renderer = Renderer {
+            font: &font,
+            prev_char_width: 2,
+            cur_char_width: 2,
+            max_smush: 0,
+        };
+        assert_eq!(Some('|'), renderer.smush_chars('[', ']'));
+        assert_eq!(Some('|'), renderer.smush_chars('/', '\\'));
+        assert_eq!(Some('Y'), renderer.smush_chars('\\', '/'));
+        assert_eq!(Some('X'), renderer.smush_chars('>', '<'));
+    }
+
+    #[test]
+    fn test_smush_rule_hardblank() {
+        let font = full_smush_font();
+        let renderer = Renderer {
+            font: &font,
+            prev_char_width: 2,
+            cur_char_width: 2,
+            max_smush: 0,
+        };
+        let hb = font.header_line.hardblank;
+        assert_eq!(Some(hb), renderer.smush_chars(hb, hb));
     }
 
     #[test]
@@ -666,6 +1035,15 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
     fn test_standard_font_loading() {
         let font1 = FIGfont::standard().unwrap();
         let font2 = FIGfont::standard().unwrap();
+
+        assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
+        assert_eq!(font1.comments, font2.comments);
+    }
+
+    #[test]
+    fn test_small_font_loading() {
+        let font1 = FIGfont::small().unwrap();
+        let font2 = FIGfont::from_file("resources/small.flf").unwrap();
 
         assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
         assert_eq!(font1.comments, font2.comments);
