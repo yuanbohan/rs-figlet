@@ -9,13 +9,13 @@ FIGLET_BIN="${FIGLET_BIN:-figlet}"
 mkdir -p "${FIXTURE_DIR}"
 
 generate_fixture() {
-    local prefix="$1"
+    local font_name="$1"
     shift
 
-    "${FIGLET_BIN}" "$@" Test > "${FIXTURE_DIR}/${prefix}_test.txt"
-    "${FIGLET_BIN}" "$@" FIGlet > "${FIXTURE_DIR}/${prefix}_figlet.txt"
-    "${FIGLET_BIN}" "$@" -- -4.5 > "${FIXTURE_DIR}/${prefix}_negative_float.txt"
-    "${FIGLET_BIN}" "$@" "Hello Rust" > "${FIXTURE_DIR}/${prefix}_hello_rust.txt"
+    "${FIGLET_BIN}" "$@" Test > "${FIXTURE_DIR}/figlet_${font_name}_test.txt"
+    "${FIGLET_BIN}" "$@" FIGlet > "${FIXTURE_DIR}/figlet_${font_name}_figlet.txt"
+    "${FIGLET_BIN}" "$@" -- -4.5 > "${FIXTURE_DIR}/figlet_${font_name}_negative_float.txt"
+    "${FIGLET_BIN}" "$@" "Hello Rust" > "${FIXTURE_DIR}/figlet_${font_name}_hello_rust.txt"
 }
 
 generate_fixture "standard"

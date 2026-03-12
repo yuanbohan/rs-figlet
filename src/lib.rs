@@ -6,12 +6,12 @@
 //! Convert string literals using built-in FIGlet or Toilet fonts:
 //!
 //! ```
-//! use figlet_rs::{FIGfont, Toilet};
+//! use figlet_rs::{FIGlet, Toilet};
 //!
-//! let standard_font = FIGfont::standard().unwrap();
+//! let standard_font = FIGlet::standard().unwrap();
 //! assert!(standard_font.convert("FIGlet").is_some());
 //!
-//! let slant_font = FIGfont::slant().unwrap();
+//! let slant_font = FIGlet::slant().unwrap();
 //! assert!(slant_font.convert("FIGlet").is_some());
 //!
 //! let smblock_font = Toilet::smblock().unwrap();
@@ -26,7 +26,7 @@ mod figlet;
 mod shared;
 mod toilet;
 
-pub use figlet::FIGfont;
+pub use figlet::FIGlet;
 pub use shared::{FIGcharacter, FIGure, HeaderLine};
 pub use toilet::Toilet;
 
@@ -45,15 +45,15 @@ mod tests {
         fs::read_to_string(root.join(path)).unwrap()
     }
 
-    fn full_smush_font() -> FIGfont {
-        let mut font = FIGfont::standard().unwrap();
+    fn full_smush_font() -> FIGlet {
+        let mut font = FIGlet::standard().unwrap();
         font.header_line.full_layout = Some(
             SM_EQUAL | SM_LOWLINE | SM_HIERARCHY | SM_PAIR | SM_BIGX | SM_HARDBLANK | SM_SMUSH,
         );
         font
     }
 
-    fn assert_golden_fixture_figlet(font: &FIGfont, message: &str, fixture_path: &str) {
+    fn assert_golden_fixture_figlet(font: &FIGlet, message: &str, fixture_path: &str) {
         let figure = font.convert(message).unwrap();
         assert_eq!(fixture(fixture_path), figure.as_str());
     }
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn test_new_figfont() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
 
         assert_eq!("flf2a$ 6 5 16 15 11 0 24463", font.header_line.header_line);
         assert_eq!("flf2a", font.header_line.signature);
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_convert() {
-        let standard_font = FIGfont::standard().unwrap();
+        let standard_font = FIGlet::standard().unwrap();
         let figure = standard_font.convert("FIGlet").unwrap();
 
         assert_eq!(6, figure.height);
@@ -117,13 +117,13 @@ mod tests {
 
     #[test]
     fn test_convert_empty_string() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         assert!(font.convert("").is_none());
     }
 
     #[test]
     fn test_convert_single_character() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         let figure = font.convert("A").unwrap();
         assert_eq!(1, figure.characters.len());
         assert_eq!(6, figure.height);
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_convert_all_ascii_printable() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         let all_ascii: String = (32..=126).map(|c| char::from_u32(c).unwrap()).collect();
         let figure = font.convert(&all_ascii).unwrap();
         assert_eq!(95, figure.characters.len());
@@ -139,14 +139,14 @@ mod tests {
 
     #[test]
     fn test_convert_with_unknown_characters() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         let figure = font.convert("Hello世界").unwrap();
         assert_eq!(5, figure.characters.len());
     }
 
     #[test]
     fn test_figure_as_str() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         let figure = font.convert("Hi").unwrap();
         let s = figure.as_str();
         assert!(!s.is_empty());
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn test_figure_display() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         let figure = font.convert("AB").unwrap();
         let display_output = format!("{}", figure);
         let debug_output = format!("{:?}", figure);
@@ -167,24 +167,36 @@ mod tests {
 
     #[test]
     fn test_standard_golden_samples() {
-        let font = FIGfont::standard().unwrap();
-        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/standard_test.txt");
-        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/standard_figlet.txt");
-        assert_golden_fixture_figlet(&font, "-4.5", "tests/fixtures/standard_negative_float.txt");
+        let font = FIGlet::standard().unwrap();
+        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/figlet_standard_test.txt");
+        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/figlet_standard_figlet.txt");
+        assert_golden_fixture_figlet(
+            &font,
+            "-4.5",
+            "tests/fixtures/figlet_standard_negative_float.txt",
+        );
         assert_golden_fixture_figlet(
             &font,
             "Hello Rust",
-            "tests/fixtures/standard_hello_rust.txt",
+            "tests/fixtures/figlet_standard_hello_rust.txt",
         );
     }
 
     #[test]
     fn test_small_golden_samples() {
-        let font = FIGfont::small().unwrap();
-        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/small_test.txt");
-        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/small_figlet.txt");
-        assert_golden_fixture_figlet(&font, "-4.5", "tests/fixtures/small_negative_float.txt");
-        assert_golden_fixture_figlet(&font, "Hello Rust", "tests/fixtures/small_hello_rust.txt");
+        let font = FIGlet::small().unwrap();
+        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/figlet_small_test.txt");
+        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/figlet_small_figlet.txt");
+        assert_golden_fixture_figlet(
+            &font,
+            "-4.5",
+            "tests/fixtures/figlet_small_negative_float.txt",
+        );
+        assert_golden_fixture_figlet(
+            &font,
+            "Hello Rust",
+            "tests/fixtures/figlet_small_hello_rust.txt",
+        );
     }
 
     #[test]
@@ -220,19 +232,19 @@ mod tests {
 
     #[test]
     fn test_figure_is_not_empty() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         assert!(font.convert("Test").unwrap().is_not_empty());
     }
 
     #[test]
     fn test_figure_with_only_unknown_chars() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         assert!(font.convert("\u{4E2D}\u{6587}").is_none());
     }
 
     #[test]
     fn test_figfont_clone() {
-        let font1 = FIGfont::standard().unwrap();
+        let font1 = FIGlet::standard().unwrap();
         let font2 = font1.clone();
 
         assert!(font1.convert("Test").is_some());
@@ -241,8 +253,8 @@ mod tests {
 
     #[test]
     fn test_standard_font_loading() {
-        let font1 = FIGfont::standard().unwrap();
-        let font2 = FIGfont::from_file("resources/standard.flf").unwrap();
+        let font1 = FIGlet::standard().unwrap();
+        let font2 = FIGlet::from_file("resources/standard.flf").unwrap();
 
         assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
         assert_eq!(font1.comments, font2.comments);
@@ -250,8 +262,8 @@ mod tests {
 
     #[test]
     fn test_small_font_loading() {
-        let font1 = FIGfont::small().unwrap();
-        let font2 = FIGfont::from_file("resources/small.flf").unwrap();
+        let font1 = FIGlet::small().unwrap();
+        let font2 = FIGlet::from_file("resources/small.flf").unwrap();
 
         assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
         assert_eq!(font1.comments, font2.comments);
@@ -259,26 +271,42 @@ mod tests {
 
     #[test]
     fn test_big_golden_samples() {
-        let font = FIGfont::big().unwrap();
-        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/big_test.txt");
-        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/big_figlet.txt");
-        assert_golden_fixture_figlet(&font, "-4.5", "tests/fixtures/big_negative_float.txt");
-        assert_golden_fixture_figlet(&font, "Hello Rust", "tests/fixtures/big_hello_rust.txt");
+        let font = FIGlet::big().unwrap();
+        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/figlet_big_test.txt");
+        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/figlet_big_figlet.txt");
+        assert_golden_fixture_figlet(
+            &font,
+            "-4.5",
+            "tests/fixtures/figlet_big_negative_float.txt",
+        );
+        assert_golden_fixture_figlet(
+            &font,
+            "Hello Rust",
+            "tests/fixtures/figlet_big_hello_rust.txt",
+        );
     }
 
     #[test]
     fn test_slant_golden_samples() {
-        let font = FIGfont::slant().unwrap();
-        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/slant_test.txt");
-        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/slant_figlet.txt");
-        assert_golden_fixture_figlet(&font, "-4.5", "tests/fixtures/slant_negative_float.txt");
-        assert_golden_fixture_figlet(&font, "Hello Rust", "tests/fixtures/slant_hello_rust.txt");
+        let font = FIGlet::slant().unwrap();
+        assert_golden_fixture_figlet(&font, "Test", "tests/fixtures/figlet_slant_test.txt");
+        assert_golden_fixture_figlet(&font, "FIGlet", "tests/fixtures/figlet_slant_figlet.txt");
+        assert_golden_fixture_figlet(
+            &font,
+            "-4.5",
+            "tests/fixtures/figlet_slant_negative_float.txt",
+        );
+        assert_golden_fixture_figlet(
+            &font,
+            "Hello Rust",
+            "tests/fixtures/figlet_slant_hello_rust.txt",
+        );
     }
 
     #[test]
     fn test_big_font_loading() {
-        let font1 = FIGfont::big().unwrap();
-        let font2 = FIGfont::from_file("resources/big.flf").unwrap();
+        let font1 = FIGlet::big().unwrap();
+        let font2 = FIGlet::from_file("resources/big.flf").unwrap();
 
         assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
         assert_eq!(font1.comments, font2.comments);
@@ -286,8 +314,8 @@ mod tests {
 
     #[test]
     fn test_slant_font_loading() {
-        let font1 = FIGfont::slant().unwrap();
-        let font2 = FIGfont::from_file("resources/slant.flf").unwrap();
+        let font1 = FIGlet::slant().unwrap();
+        let font2 = FIGlet::from_file("resources/slant.flf").unwrap();
 
         assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
         assert_eq!(font1.comments, font2.comments);
@@ -295,7 +323,7 @@ mod tests {
 
     #[test]
     fn test_figure_character_width_and_height() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         let figure = font.convert("ABC").unwrap();
 
         for char in &figure.characters {
@@ -306,15 +334,15 @@ mod tests {
 
     #[test]
     fn test_latin_characters() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         let figure = font.convert("\u{00C4}\u{00D6}\u{00DC}").unwrap();
         assert_eq!(3, figure.characters.len());
     }
 
     #[test]
     fn test_from_content_invalid() {
-        assert!(FIGfont::from_content("").is_err());
-        assert!(FIGfont::from_content("invalid").is_err());
+        assert!(FIGlet::from_content("").is_err());
+        assert!(FIGlet::from_content("invalid").is_err());
     }
 
     #[test]
@@ -422,13 +450,13 @@ mod tests {
 
     #[test]
     fn test_from_font_data_roundtrip() {
-        let font = FIGfont::standard().unwrap();
+        let font = FIGlet::standard().unwrap();
         let data = FontData {
             header_line: font.header_line.clone(),
             comments: font.comments.clone(),
             fonts: font.fonts.clone(),
         };
-        let cloned = FIGfont::from(data);
+        let cloned = FIGlet::from(data);
         assert_eq!(
             font.convert("Test").unwrap().as_str(),
             cloned.convert("Test").unwrap().as_str()
