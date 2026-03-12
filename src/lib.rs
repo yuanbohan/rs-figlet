@@ -513,7 +513,7 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         assert_eq!(6, one_font.height);
 
         assert_eq!(6, one_font.characters.len());
-        assert_eq!("  _____ ", one_font.characters.get(0).unwrap());
+        assert_eq!("  _____ ", one_font.characters.first().unwrap());
         assert_eq!(" |  ___|", one_font.characters.get(1).unwrap());
         assert_eq!(" | |_   ", one_font.characters.get(2).unwrap());
         assert_eq!(" |  _|  ", one_font.characters.get(3).unwrap());
@@ -534,10 +534,10 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         assert_eq!(6, figure.height);
         assert_eq!(6, figure.characters.len());
 
-        let f = figure.characters.get(0).unwrap();
+        let f = figure.characters.first().unwrap();
         assert_eq!(figure.height, f.height);
         assert_eq!(8, f.width);
-        assert_eq!("  _____ ", f.characters.get(0).unwrap());
+        assert_eq!("  _____ ", f.characters.first().unwrap());
         assert_eq!(" |  ___|", f.characters.get(1).unwrap());
         assert_eq!(" | |_   ", f.characters.get(2).unwrap());
         assert_eq!(" |  _|  ", f.characters.get(3).unwrap());
@@ -547,7 +547,7 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         let i = figure.characters.get(1).unwrap();
         assert_eq!(figure.height, i.height);
         assert_eq!(6, i.width);
-        assert_eq!("  ___ ", i.characters.get(0).unwrap());
+        assert_eq!("  ___ ", i.characters.first().unwrap());
         assert_eq!(" |_ _|", i.characters.get(1).unwrap());
         assert_eq!("  | | ", i.characters.get(2).unwrap());
         assert_eq!("  | | ", i.characters.get(3).unwrap());
@@ -557,7 +557,7 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         let g = figure.characters.get(2).unwrap();
         assert_eq!(figure.height, g.height);
         assert_eq!(8, g.width);
-        assert_eq!(r"   ____ ", g.characters.get(0).unwrap());
+        assert_eq!(r"   ____ ", g.characters.first().unwrap());
         assert_eq!(r"  / ___|", g.characters.get(1).unwrap());
         assert_eq!(r" | |  _ ", g.characters.get(2).unwrap());
         assert_eq!(r" | |_| |", g.characters.get(3).unwrap());
@@ -567,7 +567,7 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         let l = figure.characters.get(3).unwrap();
         assert_eq!(figure.height, l.height);
         assert_eq!(4, l.width);
-        assert_eq!("  _ ", l.characters.get(0).unwrap());
+        assert_eq!("  _ ", l.characters.first().unwrap());
         assert_eq!(" | |", l.characters.get(1).unwrap());
         assert_eq!(" | |", l.characters.get(2).unwrap());
         assert_eq!(" | |", l.characters.get(3).unwrap());
@@ -577,7 +577,7 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         let e = figure.characters.get(4).unwrap();
         assert_eq!(figure.height, e.height);
         assert_eq!(7, e.width);
-        assert_eq!(r"       ", e.characters.get(0).unwrap());
+        assert_eq!(r"       ", e.characters.first().unwrap());
         assert_eq!(r"   ___ ", e.characters.get(1).unwrap());
         assert_eq!(r"  / _ \", e.characters.get(2).unwrap());
         assert_eq!(r" |  __/", e.characters.get(3).unwrap());
@@ -587,7 +587,7 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         let t = figure.characters.get(5).unwrap();
         assert_eq!(figure.height, t.height);
         assert_eq!(6, t.width);
-        assert_eq!(r"  _   ", t.characters.get(0).unwrap());
+        assert_eq!(r"  _   ", t.characters.first().unwrap());
         assert_eq!(r" | |_ ", t.characters.get(1).unwrap());
         assert_eq!(r" | __|", t.characters.get(2).unwrap());
         assert_eq!(r" | |_ ", t.characters.get(3).unwrap());
