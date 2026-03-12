@@ -192,7 +192,11 @@ mod tests {
             "-4.5",
             "tests/fixtures/figlet_small_negative_float.txt",
         );
-        assert_golden_fixture_figlet(&font, "Hello Rust", "tests/fixtures/figlet_small_hello_rust.txt");
+        assert_golden_fixture_figlet(
+            &font,
+            "Hello Rust",
+            "tests/fixtures/figlet_small_hello_rust.txt",
+        );
     }
 
     #[test]
@@ -275,7 +279,11 @@ mod tests {
             "-4.5",
             "tests/fixtures/figlet_big_negative_float.txt",
         );
-        assert_golden_fixture_figlet(&font, "Hello Rust", "tests/fixtures/figlet_big_hello_rust.txt");
+        assert_golden_fixture_figlet(
+            &font,
+            "Hello Rust",
+            "tests/fixtures/figlet_big_hello_rust.txt",
+        );
     }
 
     #[test]
@@ -288,7 +296,11 @@ mod tests {
             "-4.5",
             "tests/fixtures/figlet_slant_negative_float.txt",
         );
-        assert_golden_fixture_figlet(&font, "Hello Rust", "tests/fixtures/figlet_slant_hello_rust.txt");
+        assert_golden_fixture_figlet(
+            &font,
+            "Hello Rust",
+            "tests/fixtures/figlet_slant_hello_rust.txt",
+        );
     }
 
     #[test]
