@@ -15,6 +15,10 @@
 //! let small_font = FIGfont::small().unwrap();
 //! let figure = small_font.convert("FIGlet");
 //! assert!(figure.is_some());
+//!
+//! let slant_font = FIGfont::slant().unwrap();
+//! let figure = slant_font.convert("FIGlet");
+//! assert!(figure.is_some());
 //! ```
 //! [`figlet`]: http://www.figlet.org
 //! [`figfont`]: http://www.jave.de/figlet/figfont.html
@@ -143,7 +147,7 @@ impl FIGfont {
         Ok(())
     }
 
-    fn extract_codetag_font_code(lines: &[&str], index: usize) -> Result<u32, String> {
+    fn extract_codetag_font_code(lines: &[&str], index: usize) -> Result<Option<u32>, String> {
         let line = lines
             .get(index)
             .ok_or_else(|| "get codetag line error".to_string())?;
@@ -154,18 +158,27 @@ impl FIGfont {
         }
 
         let code = infos[0].trim();
+        let is_negative = code.starts_with('-');
+        let unsigned = code.trim_start_matches(['-', '+']);
 
-        let code = if let Some(s) = code.strip_prefix("0x") {
-            u32::from_str_radix(s, 16)
-        } else if let Some(s) = code.strip_prefix("0X") {
-            u32::from_str_radix(s, 16)
-        } else if let Some(s) = code.strip_prefix('0') {
-            u32::from_str_radix(s, 8)
+        let parsed = if let Some(s) = unsigned.strip_prefix("0x") {
+            i64::from_str_radix(s, 16)
+        } else if let Some(s) = unsigned.strip_prefix("0X") {
+            i64::from_str_radix(s, 16)
+        } else if unsigned.len() > 1 && unsigned.starts_with('0') {
+            i64::from_str_radix(&unsigned[1..], 8)
         } else {
-            code.parse()
-        };
+            unsigned.parse()
+        }
+        .map_err(|e| format!("{e:?}"))?;
 
-        code.map_err(|e| format!("{e:?}"))
+        if is_negative {
+            Ok(None)
+        } else {
+            u32::try_from(parsed)
+                .map(Some)
+                .map_err(|e| format!("{e:?}"))
+        }
     }
 
     fn read_codetag_font(
@@ -189,7 +202,9 @@ impl FIGfont {
                 break;
             }
 
-            let code = FIGfont::extract_codetag_font_code(lines, start_index)?;
+            let Some(code) = FIGfont::extract_codetag_font_code(lines, start_index)? else {
+                continue;
+            };
             let font = FIGfont::extract_one_font(
                 lines,
                 code,
@@ -242,13 +257,25 @@ impl FIGfont {
     ///
     /// [`fontdb`]: http://www.figlet.org/fontdb.cgi
     pub fn standard() -> Result<FIGfont, String> {
-        let contents = std::include_str!("standard.flf");
+        let contents = std::include_str!("../resources/standard.flf");
         FIGfont::from_content(contents)
     }
 
     /// the small FIGlet font bundled with the crate
     pub fn small() -> Result<FIGfont, String> {
         let contents = std::include_str!("../resources/small.flf");
+        FIGfont::from_content(contents)
+    }
+
+    /// the big FIGlet font bundled with the crate
+    pub fn big() -> Result<FIGfont, String> {
+        let contents = std::include_str!("../resources/big.flf");
+        FIGfont::from_content(contents)
+    }
+
+    /// the slant FIGlet font bundled with the crate
+    pub fn slant() -> Result<FIGfont, String> {
+        let contents = std::include_str!("../resources/slant.flf");
         FIGfont::from_content(contents)
     }
 
@@ -890,48 +917,31 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
         assert!(!debug_output.is_empty());
     }
 
-    #[test]
-    fn test_standard_golden_test() {
-        let font = FIGfont::standard().unwrap();
-        let figure = font.convert("Test").unwrap();
-        assert_eq!(fixture("tests/fixtures/standard_test.txt"), figure.as_str());
+    fn assert_golden_fixture(font: &FIGfont, message: &str, fixture_path: &str) {
+        let figure = font.convert(message).unwrap();
+        assert_eq!(fixture(fixture_path), figure.as_str());
     }
 
     #[test]
-    fn test_standard_golden_figlet() {
+    fn test_standard_golden_samples() {
         let font = FIGfont::standard().unwrap();
-        let figure = font.convert("FIGlet").unwrap();
-        assert_eq!(
-            fixture("tests/fixtures/standard_figlet.txt"),
-            figure.as_str()
+        assert_golden_fixture(&font, "Test", "tests/fixtures/standard_test.txt");
+        assert_golden_fixture(&font, "FIGlet", "tests/fixtures/standard_figlet.txt");
+        assert_golden_fixture(&font, "-4.5", "tests/fixtures/standard_negative_float.txt");
+        assert_golden_fixture(
+            &font,
+            "Hello Rust",
+            "tests/fixtures/standard_hello_rust.txt",
         );
     }
 
     #[test]
-    fn test_standard_golden_negative_float() {
-        let font = FIGfont::standard().unwrap();
-        let figure = font.convert("-4.5").unwrap();
-        assert_eq!(
-            fixture("tests/fixtures/standard_negative_float.txt"),
-            figure.as_str()
-        );
-    }
-
-    #[test]
-    fn test_small_golden_test() {
-        let font = FIGfont::from_file("resources/small.flf").unwrap();
-        let figure = font.convert("Test").unwrap();
-        assert_eq!(fixture("tests/fixtures/small_test.txt"), figure.as_str());
-    }
-
-    #[test]
-    fn test_small_golden_negative_float() {
-        let font = FIGfont::from_file("resources/small.flf").unwrap();
-        let figure = font.convert("-4.5").unwrap();
-        assert_eq!(
-            fixture("tests/fixtures/small_negative_float.txt"),
-            figure.as_str()
-        );
+    fn test_small_golden_samples() {
+        let font = FIGfont::small().unwrap();
+        assert_golden_fixture(&font, "Test", "tests/fixtures/small_test.txt");
+        assert_golden_fixture(&font, "FIGlet", "tests/fixtures/small_figlet.txt");
+        assert_golden_fixture(&font, "-4.5", "tests/fixtures/small_negative_float.txt");
+        assert_golden_fixture(&font, "Hello Rust", "tests/fixtures/small_hello_rust.txt");
     }
 
     #[test]
@@ -1036,7 +1046,7 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
     #[test]
     fn test_standard_font_loading() {
         let font1 = FIGfont::standard().unwrap();
-        let font2 = FIGfont::standard().unwrap();
+        let font2 = FIGfont::from_file("resources/standard.flf").unwrap();
 
         assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
         assert_eq!(font1.comments, font2.comments);
@@ -1046,6 +1056,42 @@ of new full-width/kern/smush alternatives, but default output is NOT changed.",
     fn test_small_font_loading() {
         let font1 = FIGfont::small().unwrap();
         let font2 = FIGfont::from_file("resources/small.flf").unwrap();
+
+        assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
+        assert_eq!(font1.comments, font2.comments);
+    }
+
+    #[test]
+    fn test_big_golden_samples() {
+        let font = FIGfont::big().unwrap();
+        assert_golden_fixture(&font, "Test", "tests/fixtures/big_test.txt");
+        assert_golden_fixture(&font, "FIGlet", "tests/fixtures/big_figlet.txt");
+        assert_golden_fixture(&font, "-4.5", "tests/fixtures/big_negative_float.txt");
+        assert_golden_fixture(&font, "Hello Rust", "tests/fixtures/big_hello_rust.txt");
+    }
+
+    #[test]
+    fn test_slant_golden_samples() {
+        let font = FIGfont::slant().unwrap();
+        assert_golden_fixture(&font, "Test", "tests/fixtures/slant_test.txt");
+        assert_golden_fixture(&font, "FIGlet", "tests/fixtures/slant_figlet.txt");
+        assert_golden_fixture(&font, "-4.5", "tests/fixtures/slant_negative_float.txt");
+        assert_golden_fixture(&font, "Hello Rust", "tests/fixtures/slant_hello_rust.txt");
+    }
+
+    #[test]
+    fn test_big_font_loading() {
+        let font1 = FIGfont::big().unwrap();
+        let font2 = FIGfont::from_file("resources/big.flf").unwrap();
+
+        assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
+        assert_eq!(font1.comments, font2.comments);
+    }
+
+    #[test]
+    fn test_slant_font_loading() {
+        let font1 = FIGfont::slant().unwrap();
+        let font2 = FIGfont::from_file("resources/slant.flf").unwrap();
 
         assert_eq!(font1.header_line.header_line, font2.header_line.header_line);
         assert_eq!(font1.comments, font2.comments);

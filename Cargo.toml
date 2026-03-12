@@ -13,9 +13,14 @@ Rust implementation of FIGlet to create ascii art
 """
 keywords = ["figlet", "ascii"]
 categories = ["no-std"]
-exclude = [
-    "resources/*",
-    "*.png"
+include = [
+    "Cargo.toml",
+    "Cargo.lock",
+    "README.md",
+    "LICENSE-APACHE",
+    "COPYRIGHT",
+    "src/**",
+    "resources/*.flf",
 ]
 
 [dependencies]
