@@ -21,6 +21,8 @@ include = [
     "COPYRIGHT",
     "src/**",
     "resources/*.flf",
+    "resources/*.tlf",
 ]
 
 [dependencies]
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
