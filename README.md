@@ -7,20 +7,20 @@
 A Rust library for [FIGlet](http://www.figlet.org/) and Toilet fonts to generate ascii art.
 
 The default rendering behavior follows the font's built-in FIGlet layout settings, including
-horizontal kerning and smushing. The current output is tested against golden fixtures generated
+horizontal kerning and smushing. The current output is tested against fixtures generated
 from local `figlet` and `toilet` binaries, but running tests does not require either tool to be
 installed.
 
 ## Example
 
 ```rust
-use figlet_rs::{FIGfont, Toilet};
+use figlet_rs::{FIGlet, Toilet};
 
 fn main() {
-    let standard_font = FIGfont::standard().unwrap();
-    let small_font = FIGfont::small().unwrap();
-    let big_font = FIGfont::big().unwrap();
-    let slant_font = FIGfont::slant().unwrap();
+    let standard_font = FIGlet::standard().unwrap();
+    let small_font = FIGlet::small().unwrap();
+    let big_font = FIGlet::big().unwrap();
+    let slant_font = FIGlet::slant().unwrap();
     let smblock_font = Toilet::smblock().unwrap();
     let mono12_font = Toilet::mono12().unwrap();
     let future_font = Toilet::future().unwrap();
@@ -106,10 +106,10 @@ Output:
 ## Load A Font File
 
 ```rust
-use figlet_rs::{FIGfont, Toilet};
+use figlet_rs::{FIGlet, Toilet};
 
 fn main() {
-    let figlet_font = FIGfont::from_file("resources/small.flf").unwrap();
+    let figlet_font = FIGlet::from_file("resources/small.flf").unwrap();
     let toilet_font = Toilet::from_file("resources/smblock.tlf").unwrap();
 
     println!("{}", figlet_font.convert("Test").unwrap());
@@ -135,10 +135,10 @@ The crate bundles these fonts as built-in APIs:
 
 FIGlet:
 
-- `FIGfont::standard()` loads `resources/standard.flf`
-- `FIGfont::small()` loads `resources/small.flf`
-- `FIGfont::big()` loads `resources/big.flf`
-- `FIGfont::slant()` loads `resources/slant.flf`
+- `FIGlet::standard()` loads `resources/standard.flf`
+- `FIGlet::small()` loads `resources/small.flf`
+- `FIGlet::big()` loads `resources/big.flf`
+- `FIGlet::slant()` loads `resources/slant.flf`
 
 Toilet:
 
@@ -148,19 +148,19 @@ Toilet:
 - `Toilet::wideterm()` loads `resources/wideterm.tlf`
 - `Toilet::mono9()` loads `resources/mono9.tlf`
 
-Use `FIGfont::from_file(...)` to load custom `.flf` files.
+Use `FIGlet::from_file(...)` to load custom `.flf` files.
 
 Use `Toilet::from_file(...)` to load custom `.tlf` files, including zip-packaged `.tlf` files.
 
 ## Testing
 
-Golden fixtures live in [`tests/fixtures`](./tests/fixtures). They are committed to the repository so
+Fixtures live in [`tests/fixtures`](./tests/fixtures). They are committed to the repository so
 `cargo test` stays stable in environments without local `figlet` or `toilet` binaries.
 
 If you want to refresh the FIGlet fixtures on a machine that already has `figlet`, run:
 
 ```sh
-./scripts/generate_golden_fixtures.sh
+./scripts/generate_figlet_fixtures.sh
 ```
 
 If you want to refresh the Toilet fixtures on a machine that already has `toilet`, run:
