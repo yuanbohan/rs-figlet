@@ -1,6 +1,6 @@
 # figlet-rs
 
-[![CI](https://travis-ci.com/yuanbohan/rs-figlet.svg?branch=master)](https://travis-ci.com/yuanbohan/rs-figlet)
+[![CI](https://github.com/yuanbohan/rs-figlet/actions/workflows/ci.yml/badge.svg)](https://github.com/yuanbohan/rs-figlet/actions/workflows/ci.yml)
 [![docs](https://docs.rs/figlet-rs/badge.svg)](https://docs.rs/figlet-rs)
 [![crates.io](https://img.shields.io/crates/v/figlet-rs.svg)](https://crates.io/crates/figlet-rs)
 
@@ -18,9 +18,13 @@ use figlet_rs::FIGfont;
 fn main() {
     let standard_font = FIGfont::standard().unwrap();
     let small_font = FIGfont::small().unwrap();
+    let big_font = FIGfont::big().unwrap();
+    let slant_font = FIGfont::slant().unwrap();
 
     println!("{}", standard_font.convert("Hello Rust").unwrap());
     println!("{}", small_font.convert("Test").unwrap());
+    println!("{}", big_font.convert("Test").unwrap());
+    println!("{}", slant_font.convert("Test").unwrap());
 }
 ```
 
@@ -38,6 +42,18 @@ Output:
   | |/ -_|_-<  _|
   |_|\___/__/\__|
 
+ _______        _
+|__   __|      | |
+   | | ___  ___| |_
+   | |/ _ \/ __| __|
+   | |  __/\__ \ |_
+   |_|\___||___/\__|
+
+  ______          __
+ /_  __/__  _____/ /_
+  / / / _ \/ ___/ __/
+ / / /  __(__  ) /_
+/_/  \___/____/\__/
 ```
 
 ## Load A Font File
@@ -56,6 +72,18 @@ The default spacing behavior matches:
 ```sh
 figlet -f resources/small.flf Test
 ```
+
+## Bundled Fonts
+
+The crate bundles these fonts as built-in APIs, so downstream users do not need to manage font
+files manually:
+
+- `FIGfont::standard()` loads `resources/standard.flf`
+- `FIGfont::small()` loads `resources/small.flf`
+- `FIGfont::big()` loads `resources/big.flf`
+- `FIGfont::slant()` loads `resources/slant.flf`
+
+If you want to load a custom `.flf` file from disk, use `FIGfont::from_file(...)`.
 
 ## Testing
 
